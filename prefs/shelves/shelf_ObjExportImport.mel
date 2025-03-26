@@ -1,0 +1,74 @@
+global proc shelf_ObjExportImport () {
+    global string $gBuffStr;
+    global string $gBuffStr0;
+    global string $gBuffStr1;
+
+
+    shelfButton
+        -enableCommandRepeat 1
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "Export selected mesh(es) to OBJ format. Double click for options." 
+        -enableBackground 0
+        -backgroundColor 0 0 0 
+        -highlightColor 0.321569 0.521569 0.65098 
+        -align "center" 
+        -label "SimpleObjExport" 
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont" 
+        -overlayLabelColor 0.8 0.8 0.8 
+        -overlayLabelBackColor 0 0 0 0.5 
+        -image "save.png" 
+        -image1 "save.png" 
+        -style "iconOnly" 
+        -marginWidth 1
+        -marginHeight 1
+        -command "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter\nsimple_obj_exporter.shelf_button_clicked()" 
+        -sourceType "python" 
+        -doubleClickCommand "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter\nsimple_obj_exporter.shelf_button_alt_clicked()" 
+        -commandRepeatable 1
+        -flat 1
+    ;
+    shelfButton
+        -enableCommandRepeat 1
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "Import specified OBJ file to scene. Double click to set import path." 
+        -enableBackground 0
+        -backgroundColor 0 0 0 
+        -highlightColor 0.321569 0.521569 0.65098 
+        -align "center" 
+        -label "SimpleObjImport" 
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont" 
+        -overlayLabelColor 0.8 0.8 0.8 
+        -overlayLabelBackColor 0 0 0 0.5 
+        -image "folder-open.png" 
+        -image1 "folder-open.png" 
+        -style "iconOnly" 
+        -marginWidth 1
+        -marginHeight 1
+        -command "import SimpleObjImporter as soi\n\nsimple_obj_importer = soi.SimpleObjImporter\nsimple_obj_importer.shelf_button_clicked()" 
+        -sourceType "python" 
+        -doubleClickCommand "import SimpleObjImporter as soi\n\nsimple_obj_importer = soi.SimpleObjImporter\nsimple_obj_importer.shelf_button_alt_clicked()" 
+        -commandRepeatable 1
+        -flat 1
+    ;
+
+} 
