@@ -1,5 +1,7 @@
-# simple-obj-exporter
-A Simple OBJ Batch Exporter for Maya
+# The Simple OBJ Exporter for Maya
+![Screenshot of the Simple OBJ Exporter tool user interface in Maya](https://i.imgur.com/eqXTn9T.png)
+
+A very simple tool for one-click exporting OBJs.
 
 ## Compatibility
 Tested with Maya:	
@@ -11,7 +13,7 @@ Tested with Maya:
 ## Installation
 -	Ensure Maya is **closed**.
 
--	Head to your Maya versions config folder, which on Windows is typically `"C:/Users/<username>/Documents/maya/<version>"`. We will copy the included files to subfolders of this folder.
+-	Head to your Maya versions config folder, which on Windows is typically `"C:/Users/<username>/Documents/maya/<version>"`. We will copy the included files to sub-folders of this folder.
 
 - 	From the included `scripts` folder, copy both .py files to your `scripts` folder (in the above location).
 
