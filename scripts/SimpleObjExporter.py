@@ -1,4 +1,7 @@
 """
+MIT License
+Copyright (c) 2020 James Furler
+
 -------------------------------------------------------------------
 A Simple OBJ Batch Exporter for Maya
 
@@ -7,12 +10,6 @@ Version 1.03 - Fix for filenames with | symbols
 Version 1.0 - First release 2019_10_30
 
 Tested with Maya 2022, 2020, 2019.2, 2018.6
-
-By James Furler, 2020
-Contact: furlerjames@gmail.com
-
-Free to use for Personal or Commercial usage, but please do not
-redistribute or share as your own work.
 -------------------------------------------------------------------
 """
 import os

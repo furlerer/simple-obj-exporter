@@ -1,4 +1,7 @@
 """
+MIT License
+Copyright (c) 2020 James Furler
+
 -------------------------------------------------------------------
 A (very very) Simple OBJ Importer for Maya
 
@@ -7,12 +10,6 @@ Version 1.02 - Fixed bug where Canceling options caused mesh to reimport
         1.0 - First release 2019_10_30
 
 Tested with Maya 2020, 2019.2, 2018.6
-
-By James Furler, 2020
-Contact: furlerjames@gmail.com
-
-Free to use for Personal or Commercial usage, but please do not
-redistribute or share as your own work.
 -------------------------------------------------------------------
 """
 import maya.OpenMaya as om
