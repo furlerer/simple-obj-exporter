@@ -1,6 +1,6 @@
 """
 MIT License
-Copyright (c) 2020 James Furler
+Copyright (c) 2020-2025 James Furler
 
 -------------------------------------------------------------------
 A Simple OBJ Batch Exporter for Maya
@@ -13,6 +13,7 @@ Tested with Maya 2022, 2020, 2019.2, 2018.6
 -------------------------------------------------------------------
 """
 import os
+import json
 
 from PySide2 import QtCore
 from PySide2 import QtGui
@@ -22,7 +23,6 @@ from shiboken2 import wrapInstance
 import maya.OpenMayaUI as omui
 import maya.OpenMaya as om
 import maya.cmds as cmds
-
 
 def maya_main_window():
     # Return the Maya main window as a python object
@@ -34,8 +34,8 @@ def clean_filename(filename):
     """
     Does a basic strip and replace so a Maya node can easily become a filename.
     Maya does a decent job for us already by only allowing alphanum and ':' and "_"
-    :param filename: The string to be cleaned
-    :return: The cleaned string
+    :param str filename: The string to be cleaned
+    :return str: The cleaned string
     """
     # Check for leading or trailing symbols
     filename = filename.strip(' :|')
@@ -43,7 +43,6 @@ def clean_filename(filename):
     # Check for symbols in the string
     filename = filename.replace(':', '_')
     filename = filename.replace('|', '_')
-
     return filename
 
 
@@ -134,19 +133,18 @@ class SimpleObjExporter:
         self.options_popup.accepted.connect(self.options_accepted)
 
         self.current_selection = None
-
+        """
         # Export path option variables
         self.export_path = None
         self.batch_export_path = None
 
         # General export option variables
-        self.ask_before_every_save = False
+        self.always_ask = False
         self.triangulate_mesh = False
         self.move_to_origin = False
 
         # Tool options
         self.use_native_style = False
-        # self.use_object_attrs = False
 
         # OBJ specific export options
         self.obj_groups = True
@@ -154,6 +152,39 @@ class SimpleObjExporter:
         self.obj_materials = True
         self.obj_smoothing = True
         self.obj_normals = True
+        """
+
+        self.params = {
+            'export_path' : None,
+            'batch_export_path' : None,
+            'always_ask' : False,
+            'triangulate_mesh' : False,
+            'move_to_origin' : False,
+            'use_native_style' : False,
+            'obj_groups' : True,
+            'obj_ptgroups' : True,
+            'obj_materials' : True,
+            'obj_smoothing' : True,
+            'obj_normals' : True
+        }
+
+        self.load_defaults_json()
+
+    def load_defaults_json(self):
+        """
+        Check the users Scripts directory for a soe_defaults.json, and init class values off this
+        If it doesn't exist (ie. very first run on this comp), create it!
+        """
+        defaults_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'soe_defaults.json')
+        if not os.path.exists(defaults_path):
+            print('SimpleObjExporter: No existing defaults json file, creating...')
+            with open(defaults_path, 'w') as fw:
+                json.dump(self.params, fw, indent = 4)
+
+        else:
+            print('SimpleObjExporter: Reading defaults json file...')
+            with open(defaults_path, 'r') as fr:
+                self.params = json.load(fr)
 
     def export_selected(self):
         """
@@ -192,22 +223,21 @@ class SimpleObjExporter:
         Sets the fields of the option dialog instance based on the current class values, and shows option dialog.
         These get set manually each time the options are shown in case a user changed options then hit Cancel
         """
-        self.options_popup.file_path_le.setText(self.export_path)
-        self.options_popup.batch_path_le.setText(self.batch_export_path)
+        self.options_popup.file_path_le.setText(self.params['export_path'])
+        self.options_popup.batch_path_le.setText(self.params['batch_export_path'])
 
-        self.options_popup.ask_before_every_save_cb.setChecked(self.ask_before_every_save)
-        self.options_popup.triangulate_cb.setChecked(self.triangulate_mesh)
-        self.options_popup.move_to_origin_cb.setChecked(self.move_to_origin)
+        self.options_popup.always_ask_cb.setChecked(self.params['always_ask'])
+        self.options_popup.triangulate_cb.setChecked(self.params['triangulate_mesh'])
+        self.options_popup.move_to_origin_cb.setChecked(self.params['move_to_origin'])
 
-        self.options_popup.dialog_style_native_rb.setChecked(self.use_native_style)
-        self.options_popup.dialog_style_maya_rb.setChecked(not self.use_native_style)
-        # self.options_popup.use_object_attrs_cb.setChecked(self.use_object_attrs)
+        self.options_popup.dialog_style_native_rb.setChecked(self.params['use_native_style'])
+        self.options_popup.dialog_style_maya_rb.setChecked(not self.params['use_native_style'])
 
-        self.options_popup.obj_groups_cb.setChecked(self.obj_groups)
-        self.options_popup.obj_ptgroups_cb.setChecked(self.obj_ptgroups)
-        self.options_popup.obj_materials_cb.setChecked(self.obj_materials)
-        self.options_popup.obj_smoothing_cb.setChecked(self.obj_smoothing)
-        self.options_popup.obj_normals_cb.setChecked(self.obj_normals)
+        self.options_popup.obj_groups_cb.setChecked(self.params['obj_groups'])
+        self.options_popup.obj_ptgroups_cb.setChecked(self.params['obj_ptgroups'])
+        self.options_popup.obj_materials_cb.setChecked(self.params['obj_materials'])
+        self.options_popup.obj_smoothing_cb.setChecked(self.params['obj_smoothing'])
+        self.options_popup.obj_normals_cb.setChecked(self.params['obj_normals'])
 
         self.options_popup.show()
 
@@ -218,27 +248,26 @@ class SimpleObjExporter:
         uses the previous values.
         """
         if self.options_popup.file_path_le.text() == '':
-            self.export_path = None
+            self.params['export_path'] = None
         else:
-            self.export_path = self.options_popup.file_path_le.text()
+            self.params['export_path'] = self.options_popup.file_path_le.text()
 
         if self.options_popup.batch_path_le.text() == '':
-            self.batch_export_path = None
+            self.params['batch_export_path'] = None
         else:
-            self.batch_export_path = self.options_popup.batch_path_le.text()
+            self.params['batch_export_path'] = self.options_popup.batch_path_le.text()
 
-        self.ask_before_every_save = self.options_popup.ask_before_every_save_cb.isChecked()
-        self.triangulate_mesh = self.options_popup.triangulate_cb.isChecked()
-        self.move_to_origin = self.options_popup.move_to_origin_cb.isChecked()
+        self.params['always_ask'] = self.options_popup.always_ask_cb.isChecked()
+        self.params['triangulate_mesh'] = self.options_popup.triangulate_cb.isChecked()
+        self.params['move_to_origin'] = self.options_popup.move_to_origin_cb.isChecked()
 
-        self.use_native_style = self.options_popup.dialog_style_native_rb.isChecked()
-        # self.use_object_attrs = self.options_popup.use_object_attrs_cb.isChecked()
+        self.params['use_native_style'] = self.options_popup.dialog_style_native_rb.isChecked()
 
-        self.obj_groups = self.options_popup.obj_groups_cb.isChecked()
-        self.obj_ptgroups = self.options_popup.obj_ptgroups_cb.isChecked()
-        self.obj_materials = self.options_popup.obj_materials_cb.isChecked()
-        self.obj_smoothing = self.options_popup.obj_smoothing_cb.isChecked()
-        self.obj_normals = self.options_popup.obj_normals_cb.isChecked()
+        self.params['obj_groups'] = self.options_popup.obj_groups_cb.isChecked()
+        self.params['obj_ptgroups'] = self.options_popup.obj_ptgroups_cb.isChecked()
+        self.params['obj_materials'] = self.options_popup.obj_materials_cb.isChecked()
+        self.params['obj_smoothing'] = self.options_popup.obj_smoothing_cb.isChecked()
+        self.params['obj_normals'] = self.options_popup.obj_normals_cb.isChecked()
 
         # self.debug_print()
 
@@ -249,12 +278,12 @@ class SimpleObjExporter:
         :type mesh: str
         """
         # Triangulation
-        if self.triangulate_mesh:
+        if self.params['triangulate_mesh']:
             cmds.select(mesh, replace=True)
             cmds.polyTriangulate()
 
         # Move to origin
-        if self.move_to_origin:
+        if self.params['move_to_origin']:
             # Use the point constraint method to move to origin
             origin_loc = cmds.group(empty=True, name='temp_loc')
             point_con = cmds.pointConstraint(origin_loc, mesh, maintainOffset=False)
@@ -265,16 +294,16 @@ class SimpleObjExporter:
         """
         Performs a number of checks to make sure the user has set the required values at some point,
         either through the UI or from previous sessions through the object attributes,
-        and if so, dupelicates, processes, and exports the mesh.
+        and if so, duplicates, processes, and exports the mesh.
         """
         # has the export path or ask option been set?
         # if not, might be the first run of tool
-        if self.export_path is None and self.ask_before_every_save is False:
+        if self.params['export_path'] is None and self.params['always_ask'] is False:
             # attempt to load saved attrs from selection
             self.load_attributes(self.current_selection)
 
             # did loading work? if not, force UI pop-up
-            if self.export_path is None:
+            if self.params['export_path'] is None:
                 # pop up the options box in modal mode, so user has to enter
                 result = self.options_popup.exec_()
 
@@ -285,16 +314,16 @@ class SimpleObjExporter:
                 elif result == QtWidgets.QDialog.Accepted:
                     self.options_accepted()
 
-        if self.use_native_style:
+        if self.params['use_native_style']:
             dialog_style = 1
         else:
             dialog_style = 2
 
         # did the user just change the ask option?
-        if self.ask_before_every_save:
+        if self.params['always_ask']:
             file_path = show_file_dialog(0, dialog_style)[0]
         else:
-            file_path = self.export_path
+            file_path = self.params['export_path']
 
         # but what if the user still hasn't set a path? Check one more time
         if file_path is None:
@@ -329,12 +358,12 @@ class SimpleObjExporter:
         the path for each to be exported to, duplicating, processing and exporting the meshes.
         """
         # has the batch export path been set?
-        if self.batch_export_path is None and self.ask_before_every_save is False:
+        if self.params['batch_export_path'] is None and self.params['always_ask'] is False:
             # attempt to load saved attrs from selection
             self.load_attributes(self.current_selection[0])
 
             # did loading work? if not, force UI pop-up
-            if self.batch_export_path is None:
+            if self.params['batch_export_path'] is None:
                 # pop up the options box in modal mode, so user has to enter
                 result = self.options_popup.exec_()
 
@@ -345,16 +374,16 @@ class SimpleObjExporter:
                 elif result == QtWidgets.QDialog.Accepted:
                     self.options_accepted()
 
-        if self.use_native_style:
+        if self.params['use_native_style']:
             dialog_style = 1
         else:
             dialog_style = 2
 
         # did the user just change the ask option?
-        if self.ask_before_every_save:
+        if self.params['always_ask']:
             batch_dir = show_file_dialog(3, dialog_style)[0]
         else:
-            batch_dir = self.batch_export_path
+            batch_dir = self.params['batch_export_path']
 
         # but what if the user still hasn't set a path? Check one more time
         if batch_dir is None:
@@ -397,29 +426,29 @@ class SimpleObjExporter:
 
     def build_obj_options_string(self):
         """
-        Helper method to buiild out the verbose string Maya requires when exporting OBJs via the file command
+        Helper method to build out the verbose string Maya requires when exporting OBJs via the file command
         """
-        if self.obj_groups:
+        if self.params['obj_groups']:
             groups = '1'
         else:
             groups = '0'
 
-        if self.obj_ptgroups:
+        if self.params['obj_ptgroups']:
             ptgroups = '1'
         else:
             ptgroups = '0'
 
-        if self.obj_materials:
+        if self.params['obj_materials']:
             materials = '1'
         else:
             materials = '0'
 
-        if self.obj_smoothing:
+        if self.params['obj_smoothing']:
             smoothing = '1'
         else:
             smoothing = '0'
 
-        if self.obj_normals:
+        if self.params['obj_normals']:
             normals = '1'
         else:
             normals = '0'
@@ -434,85 +463,77 @@ class SimpleObjExporter:
         :param node: The Maya node to attempt to read attributes from
         """
         if get_attr(node, 'soep') == '':
-            self.export_path = None
+            self.params['export_path'] = None
         else:
-            self.export_path = get_attr(node, 'soep')
+            self.params['export_path'] = get_attr(node, 'soep')
 
         if get_attr(node, 'soebp') == '':
-            self.batch_export_path = None
+            self.params['batch_export_path'] = None
         else:
-            self.batch_export_path = get_attr(node, 'soebp')
+            self.params['batch_export_path'] = get_attr(node, 'soebp')
 
         if get_attr(node, 'soeask') is not None:
-            self.ask_before_every_save = get_attr(node, 'soeask')
+            self.params['always_ask'] = get_attr(node, 'soeask')
 
         if get_attr(node, 'soetri') is not None:
-            self.triangulate_mesh = get_attr(node, 'soetri')
+            self.params['triangulate_mesh'] = get_attr(node, 'soetri')
 
         if get_attr(node, 'soemto') is not None:
-            self.move_to_origin = get_attr(node, 'soemto')
+            self.params['move_to_origin'] = get_attr(node, 'soemto')
 
         if get_attr(node, 'soeds') is not None:
-            self.use_native_style = get_attr(node, 'soeds')
+            self.params['use_native_style'] = get_attr(node, 'soeds')
 
         if get_attr(node, 'soeg') is not None:
-            self.obj_groups = get_attr(node, 'soeg')
+            self.params['obj_groups'] = get_attr(node, 'soeg')
 
         if get_attr(node, 'soepg') is not None:
-            self.obj_ptgroups = get_attr(node, 'soepg')
+            self.params['obj_ptgroups'] = get_attr(node, 'soepg')
 
         if get_attr(node, 'soem') is not None:
-            self.obj_materials = get_attr(node, 'soem')
+            self.params['obj_materials'] = get_attr(node, 'soem')
 
         if get_attr(node, 'soes') is not None:
-            self.obj_smoothing = get_attr(node, 'soes')
+            self.params['obj_smoothing'] = get_attr(node, 'soes')
 
         if get_attr(node, 'soen') is not None:
-            self.obj_normals = get_attr(node, 'soen')
+            self.params['obj_normals'] = get_attr(node, 'soen')
 
     def save_attributes(self, node):
         """
         Adds and sets all the required attributes to the given Maya node, using the static set_attr method
         :param node: The Maya node to add and set the attributes to
         """
-        set_attr(node, 'soep', 'soe_path', 'string', self.export_path)
-        set_attr(node, 'soebp', 'soe_batch_path', 'string', self.batch_export_path)
-        set_attr(node, 'soeask', 'soe_ask_before_every_export', 'bool', self.ask_before_every_save)
-        set_attr(node, 'soetri', 'soe_triangulate', 'bool', self.triangulate_mesh)
-        set_attr(node, 'soemto', 'soe_move_to_origin', 'bool', self.move_to_origin)
-        set_attr(node, 'soeds', 'soe_use_native_style', 'bool', self.use_native_style)
-        set_attr(node, 'soeg', 'soe_obj_groups', 'bool', self.obj_groups)
-        set_attr(node, 'soepg', 'soe_obj_point_groups', 'bool', self.obj_ptgroups)
-        set_attr(node, 'soem', 'soe_obj_materials', 'bool', self.obj_materials)
-        set_attr(node, 'soes', 'soe_obj_smoothing', 'bool', self.obj_smoothing)
-        set_attr(node, 'soen', 'soe_obj_normals', 'bool', self.obj_normals)
+        set_attr(node, 'soep', 'soe_path', 'string', self.params['export_path'])
+        set_attr(node, 'soebp', 'soe_batch_path', 'string', self.params['batch_export_path'])
+        set_attr(node, 'soeask', 'soe_always_ask', 'bool', self.params['always_ask'])
+        set_attr(node, 'soetri', 'soe_triangulate', 'bool', self.params['triangulate_mesh'])
+        set_attr(node, 'soemto', 'soe_move_to_origin', 'bool', self.params['move_to_origin'])
+        set_attr(node, 'soeds', 'soe_use_native_style', 'bool', self.params['use_native_style'])
+        set_attr(node, 'soeg', 'soe_obj_groups', 'bool', self.params['obj_groups'])
+        set_attr(node, 'soepg', 'soe_obj_point_groups', 'bool', self.params['obj_ptgroups'])
+        set_attr(node, 'soem', 'soe_obj_materials', 'bool', self.params['obj_materials'])
+        set_attr(node, 'soes', 'soe_obj_smoothing', 'bool', self.params['obj_smoothing'])
+        set_attr(node, 'soen', 'soe_obj_normals', 'bool', self.params['obj_normals'])
 
     def debug_print(self):
         """ Helper method that dumps class variables to output """
         print('---------------------------------------------------')
-        print('Export path: {0}'.format(self.export_path))
-        print('Batch path: {0}'.format(self.batch_export_path))
-        print('Ask before every save: {0}'.format(self.ask_before_every_save))
-        print('Triangulate Mesh: {0}'.format(self.triangulate_mesh))
-        print('Move to origin: {0}'.format(self.move_to_origin))
-        print('Use Native OS Style: {0}'.format(self.use_native_style))
-        print('OBJ Groups: {0}'.format(self.obj_groups))
-        print('OBJ Point Groups: {0}'.format(self.obj_ptgroups))
-        print('OBJ Materials: {0}'.format(self.obj_materials))
-        print('OBJ Smoothing: {0}'.format(self.obj_smoothing))
-        print('OBJ Normals: {0}'.format(self.obj_normals))
+        print('Export path: {0}'.format(self.params['export_path']))
+        print('Batch path: {0}'.format(self.params['batch_export_path']))
+        print('Ask before every save: {0}'.format(self.params['always_ask']))
+        print('Triangulate Mesh: {0}'.format(self.params['triangulate_mesh']))
+        print('Move to origin: {0}'.format(self.params['move_to_origin']))
+        print('Use Native OS Style: {0}'.format(self.params['use_native_style']))
+        print('OBJ Groups: {0}'.format(self.params['obj_groups']))
+        print('OBJ Point Groups: {0}'.format(self.params['obj_ptgroups']))
+        print('OBJ Materials: {0}'.format(self.params['obj_materials']))
+        print('OBJ Smoothing: {0}'.format(self.params['obj_smoothing']))
+        print('OBJ Normals: {0}'.format(self.params['obj_normals']))
         print('---------------------------------------------------')
 
 
 class OptionsPopup(QtWidgets.QDialog):
-    """
-    This is the UI class for the options pop up that extends the QDialog class.
-    If, per chance, you are here looking to learn something about Qt and UIs inside Maya, I would whole heartedly
-    reccomend jumping on Chris Zurbrigg's Patreon and running through some of their lessons.
-    I *GENUINELY* learned everything I know about Qt and Pyside from Chris's patreon. Well worth the money.
-    https://www.patreon.com/zurbrigg
-    """
-
     def __init__(self, parent=maya_main_window()):
         """ Constructor Method """
         super(OptionsPopup, self).__init__(parent)
@@ -527,19 +548,18 @@ class OptionsPopup(QtWidgets.QDialog):
     def create_widgets(self):
         """ Helper method that groups together all widget creation """
         self.export_options_gb = QtWidgets.QGroupBox('Export Options')
-        self.ask_before_every_save_cb = QtWidgets.QCheckBox('Ask path before every export')
+        self.always_ask_cb = QtWidgets.QCheckBox('Ask path before every export')
         self.triangulate_cb = QtWidgets.QCheckBox('Triangulate mesh')
         self.move_to_origin_cb = QtWidgets.QCheckBox('Move to origin')
 
         self.tool_options_gb = QtWidgets.QGroupBox('Tool Options')
         self.dialog_style_native_rb = QtWidgets.QRadioButton('Native OS File Browser')
         self.dialog_style_maya_rb = QtWidgets.QRadioButton('Maya Style File Browser', checked=True)
-        # self.use_object_attrs_cb = QtWidgets.QCheckBox('Use Object Attributes', checked=True)
 
         self.path_options_gb = QtWidgets.QGroupBox('File Export Paths')
         self.file_path_le = QtWidgets.QLineEdit()
         self.file_path_le.setMinimumWidth(250)
-        self.file_path_le.setReadOnly(True)
+        #self.file_path_le.setReadOnly(True)
         self.file_path_le.setPlaceholderText('Browse...')
 
         self.file_path_btn = QtWidgets.QPushButton()
@@ -555,7 +575,7 @@ class OptionsPopup(QtWidgets.QDialog):
 
         self.batch_path_le = QtWidgets.QLineEdit()
         self.batch_path_le.setMinimumWidth(250)
-        self.batch_path_le.setReadOnly(True)
+        #self.batch_path_le.setReadOnly(True)
         self.batch_path_le.setPlaceholderText('Browse to directory....')
 
         self.batch_path_btn = QtWidgets.QPushButton()
@@ -563,12 +583,14 @@ class OptionsPopup(QtWidgets.QDialog):
         self.batch_path_btn.setToolTip('Browse')
 
         self.cancel_btn = QtWidgets.QPushButton('Cancel')
+        self.save_defaults_btn = QtWidgets.QPushButton('Save Defaults')
+        self.save_defaults_btn.setToolTip('Save these current options as defaults for new Maya scenes ans sessions')
         self.confirm_btn = QtWidgets.QPushButton('Confirm')
 
     def create_layout(self):
         """ Helper method that groups together all widget layout """
         export_options_layout = QtWidgets.QVBoxLayout()
-        export_options_layout.addWidget(self.ask_before_every_save_cb)
+        export_options_layout.addWidget(self.always_ask_cb)
         export_options_layout.addWidget(self.triangulate_cb)
         export_options_layout.addWidget(self.move_to_origin_cb)
         export_options_layout.addStretch()
@@ -579,7 +601,6 @@ class OptionsPopup(QtWidgets.QDialog):
         dialog_style_rb_layout.addWidget(self.dialog_style_native_rb)
         dialog_style_rb_layout.addWidget(self.dialog_style_maya_rb)
         tool_options_layout.addLayout(dialog_style_rb_layout)
-        # tool_options_layout.addWidget(self.use_object_attrs_cb)
         self.tool_options_gb.setLayout(tool_options_layout)
 
         obj_options_layout = QtWidgets.QVBoxLayout()
@@ -610,6 +631,8 @@ class OptionsPopup(QtWidgets.QDialog):
         buttons_layout = QtWidgets.QHBoxLayout()
         buttons_layout.addWidget(self.cancel_btn)
         buttons_layout.addStretch()
+        buttons_layout.addWidget(self.save_defaults_btn)
+        buttons_layout.addStretch()
         buttons_layout.addWidget(self.confirm_btn)
 
         main_layout = QtWidgets.QVBoxLayout(self)
@@ -620,10 +643,11 @@ class OptionsPopup(QtWidgets.QDialog):
     def create_connections(self):
         """ Helper method that groups together all signals and slots """
         self.cancel_btn.clicked.connect(self.reject)
+        self.save_defaults_btn.clicked.connect(self.save_defaults)
         self.confirm_btn.clicked.connect(self.accept)
         self.file_path_btn.clicked.connect(self.set_file_path)
         self.batch_path_btn.clicked.connect(self.set_batch_path)
-        self.ask_before_every_save_cb.stateChanged.connect(self.toggle_path_options)
+        self.always_ask_cb.stateChanged.connect(self.toggle_path_options)
 
     def set_file_path(self):
         """ Called when the set single file path option is clicked """
@@ -645,9 +669,29 @@ class OptionsPopup(QtWidgets.QDialog):
         if batch_path is not None:
             self.batch_path_le.setText(batch_path[0])
 
+    def save_defaults(self):
+        """ Called when the Save Defaults button is clicked """
+        json_params = {
+            'export_path' : self.file_path_le.text(),
+            'batch_export_path' : self.batch_path_le.text(),
+            'always_ask' : self.always_ask_cb.isChecked(),
+            'triangulate_mesh' : self.triangulate_cb.isChecked(),
+            'move_to_origin' : self.move_to_origin_cb.isChecked(),
+            'use_native_style' : self.dialog_style_native_rb.isChecked(),
+            'obj_groups' : self.obj_groups_cb.isChecked(),
+            'obj_ptgroups' : self.obj_ptgroups_cb.isChecked(),
+            'obj_materials' : self.obj_materials_cb.isChecked(),
+            'obj_smoothing' : self.obj_smoothing_cb.isChecked(),
+            'obj_normals' : self.obj_normals_cb.isChecked()
+        }
+        print('SimpleObjExporter: Saving current options to defaults json...')
+        defaults_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'soe_defaults.json')
+        with open(defaults_path, 'w') as fw:
+            json.dump(json_params, fw, indent = 4)
+
     def toggle_path_options(self):
         """ Disable the file path line edits if the "ask before every export" checkbox is ticked """
-        self.path_options_gb.setEnabled(not self.ask_before_every_save_cb.isChecked())
+        self.path_options_gb.setEnabled(not self.always_ask_cb.isChecked())
 
 
 # Main Method (used for testing)
