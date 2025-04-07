@@ -45,6 +45,24 @@ def clean_filename(filename):
     filename = filename.replace('|', '_')
     return filename
 
+def validate_path(path):
+    """
+    Perform a relatively simple check of the given user path.
+    Puts a little more trust to the user to not type garbage into the file path line edits in the UI.
+    Check if the directory exists, if not create the directory. If that fails, return False.
+    :param str path: The path to test against, and potentially create.
+    :return:
+    """
+    dir = os.path.dirname(path)
+    print('=============== Checking dir name: {}'.format(dir))
+    if os.path.exists(dir):
+        return True
+    # if not, makedirs
+    try:
+        os.makedirs(dir, 511, True)
+        return True
+    except Exception:
+        return False
 
 def set_attr(mesh, short_name, long_name, attr_type, value):
     """
@@ -71,7 +89,7 @@ def set_attr(mesh, short_name, long_name, attr_type, value):
         pass
 
     # set the attribute
-    if attr_type == 'string' and value is not None:
+    if attr_type == 'string' and value:
         cmds.setAttr('{0}.{1}'.format(mesh, short_name), value, type='string')
 
     elif attr_type == 'bool':
@@ -80,7 +98,7 @@ def set_attr(mesh, short_name, long_name, attr_type, value):
 
 def get_attr(mesh, short_name):
     """
-    Static helper method for attempting to get a attributes value from a Maya node
+    Static helper method for attempting to get an attributes value from a Maya node
     :param mesh: The Maya node that contains attribute
     :param short_name: The attribute's short name
     :return: The attribute's value if exists, None if does not exist
@@ -89,7 +107,14 @@ def get_attr(mesh, short_name):
         return cmds.getAttr('{0}.{1}'.format(mesh, short_name))
     except ValueError as e:
         return None
-
+    
+def delete_attr(mesh, short_name):
+    """
+    Static helper method for attempting to delete a attribute on a Maya node
+    :param mesh: The Maya node that contains attribute
+    :param short_name: The attribute's short name
+    """
+    cmds.deleteAttr('{0} at={1}'.format(mesh, short_name))
 
 def show_file_dialog(dialog_mode, dialog_style):
     """
@@ -117,7 +142,7 @@ class SimpleObjExporter:
         if not cls.class_instance:
             cls.class_instance = SimpleObjExporter()
 
-        cls.class_instance.export_selected()
+        cls.class_instance.export_pressed()
 
     @classmethod
     def shelf_button_alt_clicked(cls):
@@ -131,32 +156,16 @@ class SimpleObjExporter:
         # create and connect a persistent options window
         self.options_popup = OptionsPopup()
         self.options_popup.accepted.connect(self.options_accepted)
-
         self.current_selection = None
-        """
-        # Export path option variables
-        self.export_path = None
-        self.batch_export_path = None
+        self.params_node = 'simpleObjExporterParams'
 
-        # General export option variables
-        self.always_ask = False
-        self.triangulate_mesh = False
-        self.move_to_origin = False
-
-        # Tool options
-        self.use_native_style = False
-
-        # OBJ specific export options
-        self.obj_groups = True
-        self.obj_ptgroups = True
-        self.obj_materials = True
-        self.obj_smoothing = True
-        self.obj_normals = True
-        """
-
+        # setup our default export params
+        # unless this is the very first time this has been run, the following method will likely
+        # overwrite these values
+        ws_path = os.path.abspath(os.path.join(cmds.workspace(q = True, directory = True), '..', 'objExport'))
         self.params = {
-            'export_path' : None,
-            'batch_export_path' : None,
+            'export_path' : os.path.join(ws_path, 'DefaultExport.obj'),
+            'batch_export_path' : os.path.join(ws_path, 'batch'),
             'always_ask' : False,
             'triangulate_mesh' : False,
             'move_to_origin' : False,
@@ -168,27 +177,44 @@ class SimpleObjExporter:
             'obj_normals' : True
         }
 
-        self.load_defaults_json()
+        self.init_export_params()
 
-    def load_defaults_json(self):
+    def init_export_params(self):
         """
-        Check the users Scripts directory for a soe_defaults.json, and init class values off this
-        If it doesn't exist (ie. very first run on this comp), create it!
+        There's three levels to the export params that could exist, in order of precedence 
+        --Per object override (stored as attributes on shape nodes)
+        ----Scene global (stored on hidden simpleObjExporterParams node in root namespace)
+        ------Defaults (stored in json file in users Scripts directory, can be updated by user through UI)
+
+        We'll init the tools dict by working bottom to top, checking for defaults json and creating if needed
+        ie. the very first time the tool is run. Then check for scene level node, and create if not.
         """
         defaults_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'soe_defaults.json')
+        # does defaults json exist?
         if not os.path.exists(defaults_path):
             print('SimpleObjExporter: No existing defaults json file, creating...')
             with open(defaults_path, 'w') as fw:
                 json.dump(self.params, fw, indent = 4)
 
-        else:
-            print('SimpleObjExporter: Reading defaults json file...')
-            with open(defaults_path, 'r') as fr:
-                self.params = json.load(fr)
+        # does the scene node exist?
+        if len(cmds.ls(self.params_node)) > 0:
+            # load into the param dict
+            print('SimpleObjExporter: Scene node already exists, loading..')
+            self.load_attributes(self.params_node)
+            return
+        
+        # no scene node yet, load defaults and load into a new scene node
+        print('SimpleObjExporter: Reading defaults json file...')
+        with open(defaults_path, 'r') as fr:
+            self.params = json.load(fr)
 
-    def export_selected(self):
+        cmds.createNode('network', n=self.params_node)
+        self.save_attributes(self.params_node)
+
+    def export_pressed(self):
         """
-        Runs simple checks that correct node/s have been selected, and calls export methods based on qty selected
+        Runs checks on selection to ensure valid mesh, decide where we're pulling the export params from, 
+        and call appropriate export method
         """
         selection = cmds.ls(sl=True, type='transform')
 
@@ -198,10 +224,37 @@ class SimpleObjExporter:
 
         elif len(selection) == 1:
             shape_nodes = cmds.listRelatives(selection[0], shapes=True)
-            if shape_nodes is not None:
+            if shape_nodes:
+                # we have meshes!
                 self.current_selection = selection[0]
-                self.single_export()
+                
+                # attempt to load overrides if they exist
+                self.load_attributes(self.current_selection)
+
+                # Are we asking path each time?
+                if self.params['always_ask']:
+                    # put dialog_style into mayas expected args
+                    if self.params['use_native_style']:
+                        dialog_style = 1
+                    else:
+                        dialog_style = 2
+                    
+                    self.params['export_path'] = show_file_dialog(0, dialog_style)[0]
+
+                # now we have loaded from scene and checked overrides,
+                # lets ensure that current export path is valid
+                if validate_path(self.params['export_path']):
+                    self.export_current_selection()
+                else:
+                    # the user hasn't set a valid path yet
+                    om.MGlobal.displayError('Invalid export path: {}'.format(self.params['export_path']))
+            
+                # reset to scene params after regardless
+                self.load_attributes(self.params_node)
+                return
+
             else:
+                # something other than mesh in selection
                 om.MGlobal.displayError('"{}" is not a mesh. Please select only meshes to be exported'
                                         .format(selection[0]))
                 return
@@ -210,67 +263,102 @@ class SimpleObjExporter:
             for i in range(0, len(selection)):
                 shape_nodes = cmds.listRelatives(selection[i], shapes=True)
                 if shape_nodes is None:
-                    om.MGlobal.displayError('"{}" is not a mesh. Please select only meshes to be exported'
+                    om.MGlobal.displayError('"{}" is not a mesh. Please select ONLY meshes to be exported'
                                             .format(selection[i]))
                     return
 
-            # is success
-            self.current_selection = selection
-            self.batch_export()
+            # if we made it here, we have a selection of meshes!
+            # pretty much as above for single meshes, but iterate through each one in the selection
+            successful = 0
+            failed = 0
 
-    def show_options(self):
+            # first lets try to have a valid batch export path, if not only meshes with override will export
+            # note that per-mesh batch export paths are not read, much too complicated as the standard
+            # export path will override in a batch export anyway
+            self.load_attributes(self.params_node)
+            batch_dir = None
+            
+            if validate_path(self.params['batch_export_path']):
+                batch_dir = self.params['batch_export_path']
+
+            elif self.params['always_ask']:
+                # ask user for batch export path
+                if self.params['use_native_style']:
+                    dialog_style = 1
+                else:
+                    dialog_style = 2
+                batch_dir = show_file_dialog(3, dialog_style)[0]
+
+
+            # iterate through mesh selection
+            for i in range(0, len(selection)):
+                self.current_selection = selection[i]
+
+                # if the mesh has overrides, we should use those instead of the scene level ones,
+                # so attempt to load regardless, but extra check to determine which path it will take
+                self.load_attributes(self.current_selection)
+
+                if get_attr(self.current_selection, 'soep') is None:
+                    # no override was set, so create path
+                    if batch_dir:
+                        file_path = os.path.normpath(os.path.join(batch_dir, '{0}.obj'.format(clean_filename(self.current_selection))))
+                        # I guess maya cmds export expects these slashes?
+                        file_path = file_path.replace('\\', '/')
+                        self.params['export_path'] = file_path
+                    else:
+                        # no valid batch path was set, let user know but continue to other meshes
+                        om.MGlobal.displayWarning('No valid batch export path possible for {}, only meshes with override export paths will export'
+                                                  .format(self.current_selection))
+                        failed += 1
+                        continue
+
+                # so export path set by either override or constructed path, attempt export
+                result = self.export_current_selection()
+                if result:
+                    successful += 1
+                else:
+                    failed += 1
+            
+
+            # all meshes attempted export
+            if failed > 0:
+                om.MGlobal.displayWarning('Successfully exported {0} meshes of {1}'.format(successful, successful + failed))    
+            else:
+                om.MGlobal.displayInfo('Successfully exported {0} meshes of {1}'.format(successful, successful + failed))
+            
+            # finally, reset to scene params
+            self.load_attributes(self.params_node)
+            cmds.select(selection, replace=True)
+            self.current_selection = None
+
+    def export_current_selection(self):
         """
-        Sets the fields of the option dialog instance based on the current class values, and shows option dialog.
-        These get set manually each time the options are shown in case a user changed options then hit Cancel
+        Duplicates, processes, and exports the current selected mesh.
         """
-        self.options_popup.file_path_le.setText(self.params['export_path'])
-        self.options_popup.batch_path_le.setText(self.params['batch_export_path'])
+        file_path = self.params['export_path']
+        result = False
+        # Duplicate mesh for safety and processing
+        dupe_mesh = cmds.duplicate(self.current_selection, name='{0}_export'.format(self.current_selection))
+        self.preprocess_mesh(dupe_mesh)
+        cmds.select(dupe_mesh, replace=True)
 
-        self.options_popup.always_ask_cb.setChecked(self.params['always_ask'])
-        self.options_popup.triangulate_cb.setChecked(self.params['triangulate_mesh'])
-        self.options_popup.move_to_origin_cb.setChecked(self.params['move_to_origin'])
+        try:
+            result = cmds.file(file_path, exportSelected=True, type='OBJexport', force=True,
+                               options=self.build_obj_options_string())
 
-        self.options_popup.dialog_style_native_rb.setChecked(self.params['use_native_style'])
-        self.options_popup.dialog_style_maya_rb.setChecked(not self.params['use_native_style'])
+            om.MGlobal.displayInfo('Successfully exported to {0}'.format(result))
+            result = True
 
-        self.options_popup.obj_groups_cb.setChecked(self.params['obj_groups'])
-        self.options_popup.obj_ptgroups_cb.setChecked(self.params['obj_ptgroups'])
-        self.options_popup.obj_materials_cb.setChecked(self.params['obj_materials'])
-        self.options_popup.obj_smoothing_cb.setChecked(self.params['obj_smoothing'])
-        self.options_popup.obj_normals_cb.setChecked(self.params['obj_normals'])
+        except RuntimeError as e:
+            om.MGlobal.displayError('Unable to export {0}: {1}'.format(self.current_selection, e))
 
-        self.options_popup.show()
+        finally:
+            cmds.delete(dupe_mesh)
+            cmds.select(self.current_selection, replace=True)
+            self.current_selection = None
 
-    def options_accepted(self):
-        """
-        Saves the values from the options UI to our class variables, if the user clicks accept.
-        If the user rejects UI, we don't save these so that next time the UI is launched it still
-        uses the previous values.
-        """
-        if self.options_popup.file_path_le.text() == '':
-            self.params['export_path'] = None
-        else:
-            self.params['export_path'] = self.options_popup.file_path_le.text()
-
-        if self.options_popup.batch_path_le.text() == '':
-            self.params['batch_export_path'] = None
-        else:
-            self.params['batch_export_path'] = self.options_popup.batch_path_le.text()
-
-        self.params['always_ask'] = self.options_popup.always_ask_cb.isChecked()
-        self.params['triangulate_mesh'] = self.options_popup.triangulate_cb.isChecked()
-        self.params['move_to_origin'] = self.options_popup.move_to_origin_cb.isChecked()
-
-        self.params['use_native_style'] = self.options_popup.dialog_style_native_rb.isChecked()
-
-        self.params['obj_groups'] = self.options_popup.obj_groups_cb.isChecked()
-        self.params['obj_ptgroups'] = self.options_popup.obj_ptgroups_cb.isChecked()
-        self.params['obj_materials'] = self.options_popup.obj_materials_cb.isChecked()
-        self.params['obj_smoothing'] = self.options_popup.obj_smoothing_cb.isChecked()
-        self.params['obj_normals'] = self.options_popup.obj_normals_cb.isChecked()
-
-        # self.debug_print()
-
+        return result
+    
     def preprocess_mesh(self, mesh):
         """
         Runs Maya commands processing the given mesh based on the options selected
@@ -289,140 +377,6 @@ class SimpleObjExporter:
             point_con = cmds.pointConstraint(origin_loc, mesh, maintainOffset=False)
             cmds.delete(point_con)
             cmds.delete(origin_loc)
-
-    def single_export(self):
-        """
-        Performs a number of checks to make sure the user has set the required values at some point,
-        either through the UI or from previous sessions through the object attributes,
-        and if so, duplicates, processes, and exports the mesh.
-        """
-        # has the export path or ask option been set?
-        # if not, might be the first run of tool
-        if self.params['export_path'] is None and self.params['always_ask'] is False:
-            # attempt to load saved attrs from selection
-            self.load_attributes(self.current_selection)
-
-            # did loading work? if not, force UI pop-up
-            if self.params['export_path'] is None:
-                # pop up the options box in modal mode, so user has to enter
-                result = self.options_popup.exec_()
-
-                if result == QtWidgets.QDialog.Rejected:
-                    # the user didn't set a path, so we can't export
-                    om.MGlobal.displayError('Unable to export without Export Path set...')
-                    return
-                elif result == QtWidgets.QDialog.Accepted:
-                    self.options_accepted()
-
-        if self.params['use_native_style']:
-            dialog_style = 1
-        else:
-            dialog_style = 2
-
-        # did the user just change the ask option?
-        if self.params['always_ask']:
-            file_path = show_file_dialog(0, dialog_style)[0]
-        else:
-            file_path = self.params['export_path']
-
-        # but what if the user still hasn't set a path? Check one more time
-        if file_path is None:
-            om.MGlobal.displayError('Unable to export without Export Path set...')
-            return
-
-        # if we got here, we're pretty safe
-        # Duplicate mesh for safety and processing
-        dupe_mesh = cmds.duplicate(self.current_selection, name='{0}_export'.format(self.current_selection))
-        self.preprocess_mesh(dupe_mesh)
-        cmds.select(dupe_mesh, replace=True)
-
-        try:
-            result = cmds.file(file_path, exportSelected=True, type='OBJexport', force=True,
-                               options=self.build_obj_options_string())
-
-            om.MGlobal.displayInfo('Successfully exported to {0}'.format(result))
-
-        except RuntimeError as e:
-            om.MGlobal.displayError(('Unable to export selected mesh. Check file path and try again. '
-                                     '(Maya error output: {0})'.format(e)))
-
-        cmds.delete(dupe_mesh)
-        cmds.select(self.current_selection, replace=True)
-        # set/update attrs on selection
-        self.save_attributes(self.current_selection)
-        self.current_selection = None
-
-    def batch_export(self):
-        """
-        Same checks as single_export(), but instead runs a loop over the selected meshes, building
-        the path for each to be exported to, duplicating, processing and exporting the meshes.
-        """
-        # has the batch export path been set?
-        if self.params['batch_export_path'] is None and self.params['always_ask'] is False:
-            # attempt to load saved attrs from selection
-            self.load_attributes(self.current_selection[0])
-
-            # did loading work? if not, force UI pop-up
-            if self.params['batch_export_path'] is None:
-                # pop up the options box in modal mode, so user has to enter
-                result = self.options_popup.exec_()
-
-                if result == QtWidgets.QDialog.Rejected:
-                    # the user didn't set a path, so we can't export
-                    om.MGlobal.displayError('Unable to export without Batch Export Path set...')
-                    return
-                elif result == QtWidgets.QDialog.Accepted:
-                    self.options_accepted()
-
-        if self.params['use_native_style']:
-            dialog_style = 1
-        else:
-            dialog_style = 2
-
-        # did the user just change the ask option?
-        if self.params['always_ask']:
-            batch_dir = show_file_dialog(3, dialog_style)[0]
-        else:
-            batch_dir = self.params['batch_export_path']
-
-        # but what if the user still hasn't set a path? Check one more time
-        if batch_dir is None:
-            om.MGlobal.displayError('Unable to export without Batch Export Path set...')
-            return
-
-        # we are as safe as possible for now
-        obj_options = self.build_obj_options_string()
-
-        export_count = 0
-        meshes = self.current_selection
-        for i in range(0, len(meshes)):
-            # Duplicate mesh for safety, and create file name with no namespace colons
-            dupe_mesh = cmds.duplicate(meshes[i], name='{0}_export'.format(meshes[i]))
-            # normalise and then replace slashes to appease Maya
-            file_path = os.path.normpath(os.path.join(batch_dir, '{0}.obj'.format(clean_filename(meshes[i]))))
-            file_path = file_path.replace('\\', '/')
-            self.preprocess_mesh(dupe_mesh)
-            cmds.select(dupe_mesh, replace=True)
-
-            try:
-                cmds.file(file_path, exportSelected=True, type='OBJexport', force=True, options=obj_options)
-
-            except RuntimeError as e:
-                om.MGlobal.displayError(('Unable to export selected meshes. Check file path and try again. '
-                                         '(Maya error output: {0})'.format(e)))
-                cmds.delete(dupe_mesh)
-                continue
-
-            cmds.delete(dupe_mesh)
-            export_count += 1
-            # set/update attrs on mesh
-            self.save_attributes(meshes[i])
-
-        # but if we finished for all the meshes
-        om.MGlobal.displayInfo('Successfully exported {0} meshes to {1}'.format(export_count, batch_dir))
-        # Nice touch to select the original selection after
-        cmds.select(self.current_selection, replace=True)
-        self.current_selection = None
 
     def build_obj_options_string(self):
         """
@@ -456,47 +410,105 @@ class SimpleObjExporter:
         return 'groups={0};ptgroups={1};materials={2};smoothing={3};normals={4}'.format(
             groups, ptgroups, materials, smoothing, normals)
 
+    def show_options(self):
+        """
+        Sets the fields of the option dialog instance based on the current class values, and shows option dialog.
+        These get set manually each time the options are shown in case a user changed options then hit Cancel
+        """
+        # TODO Global vs per mesh overrides
+        self.options_popup.file_path_le.setText(self.params['export_path'])
+        self.options_popup.batch_path_le.setText(self.params['batch_export_path'])
+
+        self.options_popup.always_ask_cb.setChecked(self.params['always_ask'])
+        self.options_popup.triangulate_cb.setChecked(self.params['triangulate_mesh'])
+        self.options_popup.move_to_origin_cb.setChecked(self.params['move_to_origin'])
+
+        self.options_popup.dialog_style_native_rb.setChecked(self.params['use_native_style'])
+        self.options_popup.dialog_style_maya_rb.setChecked(not self.params['use_native_style'])
+
+        self.options_popup.obj_groups_cb.setChecked(self.params['obj_groups'])
+        self.options_popup.obj_ptgroups_cb.setChecked(self.params['obj_ptgroups'])
+        self.options_popup.obj_materials_cb.setChecked(self.params['obj_materials'])
+        self.options_popup.obj_smoothing_cb.setChecked(self.params['obj_smoothing'])
+        self.options_popup.obj_normals_cb.setChecked(self.params['obj_normals'])
+
+        self.options_popup.show()
+
+    def options_accepted(self, node = None):
+        """
+        Saves the values from the options UI to our class variables, if the user clicks accept.
+        If the user rejects UI, we don't save these so that next time the UI is launched it still
+        uses the previous values.
+        """
+        # TODO Global vs per mesh overrides
+        
+        # ensure that the user has not fed in garbage for the paths, and just show popup again
+        if validate_path(self.options_popup.file_path_le.text()):
+            self.params['export_path'] = self.options_popup.file_path_le.text()
+        else:
+            om.MGlobal.displayError('Export file path is not valid! Not updating...')
+        
+        if validate_path(self.options_popup.batch_path_le.text()):
+            self.params['batch_export_path'] = self.options_popup.batch_path_le.text()
+        else:
+            om.MGlobal.displayError('Batch export file path is not valid! Not updating...')
+
+
+        self.params['always_ask'] = self.options_popup.always_ask_cb.isChecked()
+        self.params['triangulate_mesh'] = self.options_popup.triangulate_cb.isChecked()
+        self.params['move_to_origin'] = self.options_popup.move_to_origin_cb.isChecked()
+
+        self.params['use_native_style'] = self.options_popup.dialog_style_native_rb.isChecked()
+
+        self.params['obj_groups'] = self.options_popup.obj_groups_cb.isChecked()
+        self.params['obj_ptgroups'] = self.options_popup.obj_ptgroups_cb.isChecked()
+        self.params['obj_materials'] = self.options_popup.obj_materials_cb.isChecked()
+        self.params['obj_smoothing'] = self.options_popup.obj_smoothing_cb.isChecked()
+        self.params['obj_normals'] = self.options_popup.obj_normals_cb.isChecked()
+
+        # self.debug_print()
+    
     def load_attributes(self, node):
         """
-        Attempts to load the specified attributes from the given Maya node, and if they exists, sets our
-        class variables to those attributes.
+        Attempts to load the specified attributes from the given Maya node, and if they exists, 
+        sets our class dict to those attributes.
         :param node: The Maya node to attempt to read attributes from
         """
-        if get_attr(node, 'soep') == '':
-            self.params['export_path'] = None
-        else:
+        if get_attr(node, 'soep'):
             self.params['export_path'] = get_attr(node, 'soep')
+        #else:
+        #    self.params['export_path'] = get_attr(node, 'soep')
 
-        if get_attr(node, 'soebp') == '':
-            self.params['batch_export_path'] = None
-        else:
+        if get_attr(node, 'soebp'):
             self.params['batch_export_path'] = get_attr(node, 'soebp')
+        #else:
+        #    self.params['batch_export_path'] = get_attr(node, 'soebp')
 
-        if get_attr(node, 'soeask') is not None:
+        if get_attr(node, 'soeask'):
             self.params['always_ask'] = get_attr(node, 'soeask')
 
-        if get_attr(node, 'soetri') is not None:
+        if get_attr(node, 'soetri'):
             self.params['triangulate_mesh'] = get_attr(node, 'soetri')
 
-        if get_attr(node, 'soemto') is not None:
+        if get_attr(node, 'soemto'):
             self.params['move_to_origin'] = get_attr(node, 'soemto')
 
-        if get_attr(node, 'soeds') is not None:
+        if get_attr(node, 'soeds'):
             self.params['use_native_style'] = get_attr(node, 'soeds')
 
-        if get_attr(node, 'soeg') is not None:
+        if get_attr(node, 'soeg'):
             self.params['obj_groups'] = get_attr(node, 'soeg')
 
-        if get_attr(node, 'soepg') is not None:
+        if get_attr(node, 'soepg'):
             self.params['obj_ptgroups'] = get_attr(node, 'soepg')
 
-        if get_attr(node, 'soem') is not None:
+        if get_attr(node, 'soem'):
             self.params['obj_materials'] = get_attr(node, 'soem')
 
-        if get_attr(node, 'soes') is not None:
+        if get_attr(node, 'soes'):
             self.params['obj_smoothing'] = get_attr(node, 'soes')
 
-        if get_attr(node, 'soen') is not None:
+        if get_attr(node, 'soen'):
             self.params['obj_normals'] = get_attr(node, 'soen')
 
     def save_attributes(self, node):
@@ -656,7 +668,7 @@ class OptionsPopup(QtWidgets.QDialog):
         else:
             file_path = show_file_dialog(0, 2)
 
-        if file_path is not None:
+        if file_path:
             self.file_path_le.setText(file_path[0])
 
     def set_batch_path(self):
@@ -666,7 +678,7 @@ class OptionsPopup(QtWidgets.QDialog):
         else:
             batch_path = show_file_dialog(3, 2)
 
-        if batch_path is not None:
+        if batch_path:
             self.batch_path_le.setText(batch_path[0])
 
     def save_defaults(self):
@@ -697,4 +709,4 @@ class OptionsPopup(QtWidgets.QDialog):
 # Main Method (used for testing)
 if __name__ == "__main__":
     simple_obj_exporter = SimpleObjExporter()
-    simple_obj_exporter.export_selected()
+    simple_obj_exporter.export_pressed()
