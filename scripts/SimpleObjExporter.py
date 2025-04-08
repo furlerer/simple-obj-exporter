@@ -5,11 +5,7 @@ Copyright (c) 2020-2025 James Furler
 -------------------------------------------------------------------
 A Simple OBJ Batch Exporter for Maya
 
-Version 1.10 - Updated for Python 3, added Dialog style switch, object attrs
-Version 1.03 - Fix for filenames with | symbols
-Version 1.0 - First release 2019_10_30
-
-Tested with Maya 2022, 2020, 2019.2, 2018.6
+Tested with Maya 2024
 -------------------------------------------------------------------
 """
 import os
@@ -66,6 +62,7 @@ def validate_dir_path(path):
     try:
         #print('SimpleObjExporter: Attempting to create output directory {}'.format(dir))
         os.makedirs(dir, 511, True)
+        om.MGlobal.displayInfo('Created output directory {}'.format(dir))
         return True
     except Exception:
         return False
@@ -338,9 +335,9 @@ class SimpleObjExporter:
         
             # all meshes have attempted export
             if failed > 0:
-                om.MGlobal.displayWarning('Successfully exported {0} meshes of {1}'.format(successful, successful + failed))    
+                om.MGlobal.displayWarning('Successfully exported {0} of {1} meshes'.format(successful, successful + failed))    
             else:
-                om.MGlobal.displayInfo('Successfully exported {0} meshes of {1}'.format(successful, successful + failed))
+                om.MGlobal.displayInfo('Successfully exported {0} of {1} meshes'.format(successful, successful + failed))
 
         else:
             # something has gone terribly wrong and we got passed a zero length selection
@@ -466,13 +463,16 @@ class SimpleObjExporter:
 
         # ensure the user has not fed garbage into the line edits
         # if so, simply don't update them and leave as is
-        if validate_dir_path(os.path.dirname(self.options_popup.file_path_le.text())):
-            self.params['export_path'] = self.options_popup.file_path_le.text()
+        export_path = self.options_popup.file_path_le.text()
+        if validate_dir_path(os.path.dirname(export_path)):
+            self.params['export_path'] = export_path
         else:
             om.MGlobal.displayError('Export file path is not valid! Not updating...')
 
-        if validate_dir_path(self.options_popup.batch_path_le.text()):
-            self.params['batch_export_path'] = self.options_popup.batch_path_le.text()
+        # ensure batch path doesn't have file ext
+        batch_path = os.path.splitext(self.options_popup.batch_path_le.text())[0]
+        if validate_dir_path(batch_path):
+            self.params['batch_export_path'] = batch_path
         else:
             om.MGlobal.displayError('Batch export file path is not valid! Not updating...')
 
