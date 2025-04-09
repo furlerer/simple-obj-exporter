@@ -20,6 +20,8 @@ import maya.OpenMayaUI as omui
 import maya.OpenMaya as om
 import maya.cmds as cmds
 
+DEFAULTS_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'soe_defaults.json')
+
 def maya_main_window():
     # Return the Maya main window as a python object
     main_window_ptr = omui.MQtUtil.mainWindow()
@@ -186,6 +188,11 @@ class SimpleObjExporter:
             'obj_normals' : True
         }
 
+        # check if defaults json exists, create if not
+        if not os.path.exists(DEFAULTS_JSON):
+            with open(DEFAULTS_JSON, 'w') as fw:
+                json.dump(self.params, fw, indent = 4)
+
         # dict of the params to attribute short and long names, and type
         # for cleaner setting and getting later on, can do in loop
         self.param_attr_map = {
@@ -203,6 +210,7 @@ class SimpleObjExporter:
             'obj_normals' : {'sn':'soen','ln':'soe_obj_normals', 'type':'bool'}
         }
 
+
     def init_export_params(self):
         """
         Initialize the locations where data from previous sessions may be stored.
@@ -212,7 +220,6 @@ class SimpleObjExporter:
         3) If the defaults json doesn't already exist, this is the very first time
         the tool has been run on this Maya install, so create it
         """
-        defaults_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'soe_defaults.json')
 
         # does the scene node exist?
         if len(cmds.ls(self.params_node)) > 0:
@@ -222,17 +229,11 @@ class SimpleObjExporter:
             return
 
         # no scene node, does defaults json exist?
-        if os.path.exists(defaults_path):
+        if os.path.exists(DEFAULTS_JSON):
             # json exists, load this
             #print('SimpleObjExporter: Reading defaults json file...')
-            with open(defaults_path, 'r') as fr:
+            with open(DEFAULTS_JSON, 'r') as fr:
                 self.params = json.load(fr)
-
-        else:
-            # json doesn't exist yet, write one out using our defaults from the __init__
-            #print('SimpleObjExporter: No existing defaults json file, creating...')
-            with open(defaults_path, 'w') as fw:
-                json.dump(self.params, fw, indent = 4)
 
         # now create the scene node to store our params on
         cmds.createNode('network', n=self.params_node)
@@ -701,8 +702,8 @@ class OptionsPopup(QtWidgets.QDialog):
     def load_defaults(self):
         """ Called when the Load Defaults button is clicked. """
         #print('SimpleObjExporter: Reading defaults from json...')
-        defaults_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'soe_defaults.json')
-        with open(defaults_path, 'r') as fr:
+
+        with open(DEFAULTS_JSON, 'r') as fr:
             default_params = json.load(fr)
 
         self.file_path_le.setText(default_params['export_path'])
@@ -718,7 +719,7 @@ class OptionsPopup(QtWidgets.QDialog):
         self.obj_smoothing_cb.setChecked(default_params['obj_smoothing'])
         self.obj_normals_cb.setChecked(default_params['obj_normals'])
 
-        om.MGlobal.displayInfo('Read defaults from {}'.format(defaults_path))
+        om.MGlobal.displayInfo('Read defaults from {}'.format(DEFAULTS_JSON))
 
 
     def save_defaults(self):
@@ -738,11 +739,11 @@ class OptionsPopup(QtWidgets.QDialog):
             'obj_normals' : self.obj_normals_cb.isChecked()
         }
         #print('SimpleObjExporter: Saving current options to defaults json...')
-        defaults_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'soe_defaults.json')
-        with open(defaults_path, 'w') as fw:
+
+        with open(DEFAULTS_JSON, 'w') as fw:
             json.dump(json_params, fw, indent = 4)
 
-        om.MGlobal.displayInfo('Saved defaults to {}'.format(defaults_path))
+        om.MGlobal.displayInfo('Saved defaults to {}'.format(DEFAULTS_JSON))
 
     def toggle_path_options(self):
         """ Disable the file path line edits if the "ask before every export" checkbox is ticked """
