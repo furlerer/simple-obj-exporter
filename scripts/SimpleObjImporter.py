@@ -1,15 +1,11 @@
 """
 MIT License
-Copyright (c) 2020 James Furler
+Copyright (c) 2020-2025 James Furler
 
 -------------------------------------------------------------------
 A (very very) Simple OBJ Importer for Maya
 
-Version 1.02 - Fixed bug where Canceling options caused mesh to reimport
-        1.01 - Added ability to select multiple files to Import
-        1.0 - First release 2019_10_30
-
-Tested with Maya 2020, 2019.2, 2018.6
+Tested with Maya 2024
 -------------------------------------------------------------------
 """
 import maya.OpenMaya as om
@@ -32,7 +28,8 @@ class SimpleObjImporter:
         if not cls.class_instance:
             cls.class_instance = SimpleObjImporter()
 
-        cls.class_instance.show_path_dialog()
+        if cls.class_instance.show_path_dialog():
+            cls.class_instance.import_objs()
 
     def __init__(self):
         # import path option variables
@@ -63,3 +60,7 @@ class SimpleObjImporter:
 
         if path is not None:
             self.import_path = path
+            return True
+        
+        # else
+        return False
