@@ -11,10 +11,16 @@ Tested with Maya 2024
 import os
 import json
 
-from PySide2 import QtCore
-from PySide2 import QtGui
-from PySide2 import QtWidgets
-from shiboken2 import wrapInstance
+# Maya switched from PySide2 to PySide6 in 2025
+try:
+    from PySide6 import QtCore, QtGui, QtWidgets
+except ModuleNotFoundError:
+    from PySide2 import QtCore, QtGui, QtWidgets
+
+try:
+    from shiboken6 import wrapInstance
+except ModuleNotFoundError:
+    from shiboken2 import wrapInstance
 
 import maya.OpenMayaUI as omui
 import maya.OpenMaya as om
