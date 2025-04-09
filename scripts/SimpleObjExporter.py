@@ -177,6 +177,7 @@ class SimpleObjExporter:
             'always_ask' : False,
             'triangulate_mesh' : False,
             'move_to_origin' : False,
+            'combine': False,
             'use_native_style' : False,
             'obj_groups' : True,
             'obj_ptgroups' : True,
@@ -193,6 +194,7 @@ class SimpleObjExporter:
             'always_ask' : {'sn':'soeask','ln':'soe_always_ask', 'type':'bool'},
             'triangulate_mesh' : {'sn':'soetri','ln':'soe_triangulate', 'type':'bool'},
             'move_to_origin' : {'sn':'soemto','ln':'soe_move_to_origin', 'type':'bool'},
+            'combine' : {'sn':'soec','ln':'soe_combine', 'type':'bool'},
             'use_native_style' : {'sn':'soeds','ln':'soe_use_native_style', 'type':'bool'},
             'obj_groups' : {'sn':'soeg','ln':'soe_obj_groups', 'type':'bool'},
             'obj_ptgroups' : {'sn':'soepg','ln':'soe_obj_point_groups', 'type':'bool'},
@@ -234,6 +236,7 @@ class SimpleObjExporter:
 
         # now create the scene node to store our params on
         cmds.createNode('network', n=self.params_node)
+        cmds.select(clear = True)
         self.save_attributes(self.params_node)
 
     def export_pressed(self):
@@ -262,82 +265,28 @@ class SimpleObjExporter:
         
     def export_selection(self, selection):
         """
-        Depending on length of selection array, performs standard export or a batch (loop) export
+        Depending on length of selection array, call appropriate export method.
         By the time this function is reached, we are confident we have a valid selection and work
         under that assumption.
         """
+        # ensure scene params loaded
+        self.load_attributes(self.params_node)
+
         # is this a single or batch selection to export?
         if len(selection) == 1:
             # Single mesh export
-            current_selection = selection[0]
-
-            # ensure scene params loaded
-            self.load_attributes(self.params_node)
-
-            # Are we asking path each time?
-            if self.params['always_ask']:
-                # put dialog_style into mayas expected args
-                if self.params['use_native_style']:
-                    dialog_style = 1
-                else:
-                    dialog_style = 2
-
-                self.params['export_path'] = show_file_dialog(0, dialog_style)[0]
-
-            # now we have loaded from scene and checked overrides,
-            # lets ensure that current export path is valid
-            if validate_dir_path(os.path.dirname(self.params['export_path'])):
-                self.export_mesh(current_selection)
-
-            else:
-                om.MGlobal.displayError('Invalid export path: {}'.format(self.params['export_path']))
+            self.export_single(selection[0])
     
-        
         elif len(selection) > 1:
-            # Batch export of meshes
-            successful = 0
-            failed = 0
+            if self.params['combine']:
+                # combine selection to single mesh, then standard export
+                combined = self.combine_meshes(selection)
+                self.export_single(combined)
+                cmds.delete(combined)
 
-            # ensure scene params loaded
-            self.load_attributes(self.params_node)
-            batch_dir = None
-        
-            # Are we asking path each time?
-            if self.params['always_ask']:
-                if self.params['use_native_style']:
-                    dialog_style = 1
-                else:
-                    dialog_style = 2
-                self.params['batch_export_path'] = show_file_dialog(3, dialog_style)[0]
-
-            # bail out if not valid directory
-            if not validate_dir_path(self.params['batch_export_path']):
-                om.MGlobal.displayError('Batch export path not valid: {}'.format(self.params['batch_export_path']))
-                return
-
-            # iterate through mesh selection
-            for i in range(0, len(selection)):
-                current_selection = selection[i]
-
-                # attempt to build path using set path and node name
-                file_path = os.path.join(self.params['batch_export_path'], '{0}.obj'.format(clean_filename(current_selection)))
-                # I guess maya cmds export expects these slashes?
-                file_path = os.path.normpath(file_path)
-                file_path = file_path.replace('\\', '/')
-                self.params['export_path'] = file_path
-
-                # attempt export
-                result = self.export_mesh(current_selection)
-                if result:
-                    successful += 1
-                else:
-                    failed += 1
-        
-            # all meshes have attempted export
-            if failed > 0:
-                om.MGlobal.displayWarning('Successfully exported {0} of {1} meshes'.format(successful, successful + failed))    
             else:
-                om.MGlobal.displayInfo('Successfully exported {0} of {1} meshes'.format(successful, successful + failed))
+                # Batch export of meshes
+                self.export_batch(selection)
 
         else:
             # something has gone terribly wrong and we got passed a zero length selection
@@ -347,6 +296,70 @@ class SimpleObjExporter:
         self.load_attributes(self.params_node)
         cmds.select(selection, replace=True)
         
+    def export_single(self, mesh):
+        """
+        Checks file export path for the single mesh, and calls final export mesh method 
+        """
+        # Are we asking path each time?
+        if self.params['always_ask']:
+            # put dialog_style into mayas expected args
+            if self.params['use_native_style']:
+                dialog_style = 1
+            else:
+                dialog_style = 2
+
+            self.params['export_path'] = show_file_dialog(0, dialog_style)[0]
+
+        # now we have loaded from scene and checked overrides,
+        # lets ensure that current export path is valid
+        if validate_dir_path(os.path.dirname(self.params['export_path'])):
+            self.export_mesh(mesh)
+        else:
+            om.MGlobal.displayError('Invalid export path: {}'.format(self.params['export_path']))
+
+    def export_batch(self, meshes):
+        """
+        Checks file export path for the batch, and loops over given meshes calling export mesh method
+        """
+        successful = 0
+        failed = 0
+    
+        # Are we asking path each time?
+        if self.params['always_ask']:
+            if self.params['use_native_style']:
+                dialog_style = 1
+            else:
+                dialog_style = 2
+            self.params['batch_export_path'] = show_file_dialog(3, dialog_style)[0]
+
+        # bail out if not valid directory
+        if not validate_dir_path(self.params['batch_export_path']):
+            om.MGlobal.displayError('Batch export path not valid: {}'.format(self.params['batch_export_path']))
+            return
+
+        # iterate through mesh selection
+        for i in range(0, len(meshes)):
+            curr_mesh = meshes[i]
+
+            # attempt to build path using set path and node name
+            file_path = os.path.join(self.params['batch_export_path'], '{0}.obj'.format(clean_filename(curr_mesh)))
+            # I guess maya cmds export expects these slashes?
+            file_path = os.path.normpath(file_path)
+            file_path = file_path.replace('\\', '/')
+            self.params['export_path'] = file_path
+
+            # attempt export
+            result = self.export_mesh(curr_mesh)
+            if result:
+                successful += 1
+            else:
+                failed += 1
+    
+        # all meshes have attempted export
+        if failed > 0:
+            om.MGlobal.displayWarning('Successfully exported {0} of {1} meshes'.format(successful, successful + failed))    
+        else:
+            om.MGlobal.displayInfo('Successfully exported {0} of {1} meshes'.format(successful, successful + failed))
 
     def export_mesh(self, mesh):
         """
@@ -363,7 +376,7 @@ class SimpleObjExporter:
             out_file = cmds.file(file_path, exportSelected=True, type='OBJexport', force=True, 
                                  options=self.build_obj_options_string())
 
-            om.MGlobal.displayInfo('Successfully exported to {0}'.format(out_file))
+            om.MGlobal.displayInfo('Successfully exported to {0}'.format(os.path.normpath(out_file)))
             result = True
 
         except RuntimeError as e:
@@ -393,6 +406,16 @@ class SimpleObjExporter:
             point_con = cmds.pointConstraint(origin_loc, mesh, maintainOffset=False)
             cmds.delete(point_con)
             cmds.delete(origin_loc)
+
+    def combine_meshes(self, meshes):
+        """
+        Duplicates working copies, polyUnite, and delete history on the given array of meshes
+        """
+        duplicated = cmds.duplicate(meshes)
+        combined = cmds.polyUnite(duplicated, centerPivot = True)
+        # delete history else will leave empty groups behind
+        cmds.delete(combined, constructionHistory = True)
+        return combined[0]
 
     def build_obj_options_string(self):
         """
@@ -440,6 +463,7 @@ class SimpleObjExporter:
         self.options_popup.always_ask_cb.setChecked(self.params['always_ask'])
         self.options_popup.triangulate_cb.setChecked(self.params['triangulate_mesh'])
         self.options_popup.move_to_origin_cb.setChecked(self.params['move_to_origin'])
+        self.options_popup.combine_cb.setChecked(self.params['combine'])
 
         self.options_popup.dialog_style_native_rb.setChecked(self.params['use_native_style'])
         self.options_popup.dialog_style_maya_rb.setChecked(not self.params['use_native_style'])
@@ -458,28 +482,13 @@ class SimpleObjExporter:
         If the user rejects UI, we don't save these so that next time the UI is launched it still
         uses the previous values.
         """
-        # ensure current scene params loaded
-        self.load_attributes(self.params_node)
+        self.params['export_path'] = self.options_popup.file_path_le.text()
+        self.params['batch_export_path'] = self.options_popup.batch_path_le.text()
 
-        # ensure the user has not fed garbage into the line edits
-        # if so, simply don't update them and leave as is
-        export_path = self.options_popup.file_path_le.text()
-        if validate_dir_path(os.path.dirname(export_path)):
-            self.params['export_path'] = export_path
-        else:
-            om.MGlobal.displayError('Export file path is not valid! Not updating...')
-
-        # ensure batch path doesn't have file ext
-        batch_path = os.path.splitext(self.options_popup.batch_path_le.text())[0]
-        if validate_dir_path(batch_path):
-            self.params['batch_export_path'] = batch_path
-        else:
-            om.MGlobal.displayError('Batch export file path is not valid! Not updating...')
-
-        # the other params are much safer, so just set those
         self.params['always_ask'] = self.options_popup.always_ask_cb.isChecked()
         self.params['triangulate_mesh'] = self.options_popup.triangulate_cb.isChecked()
         self.params['move_to_origin'] = self.options_popup.move_to_origin_cb.isChecked()
+        self.params['combine'] = self.options_popup.combine_cb.isChecked()
         self.params['use_native_style'] = self.options_popup.dialog_style_native_rb.isChecked()
         self.params['obj_groups'] = self.options_popup.obj_groups_cb.isChecked()
         self.params['obj_ptgroups'] = self.options_popup.obj_ptgroups_cb.isChecked()
@@ -498,7 +507,7 @@ class SimpleObjExporter:
         """
         for param in self.param_attr_map.keys():
             short_name = self.param_attr_map[param]['sn']
-            if get_attr(node, short_name):
+            if get_attr(node, short_name) is not None:
                 self.params[param] = get_attr(node, short_name)
 
     def save_attributes(self, node):
@@ -531,6 +540,7 @@ class SimpleObjExporter:
         print('Ask before every save: {0}'.format(self.params['always_ask']))
         print('Triangulate Mesh: {0}'.format(self.params['triangulate_mesh']))
         print('Move to origin: {0}'.format(self.params['move_to_origin']))
+        print('Combine Meshes: {0}'.format(self.params['combine']))
         print('Use Native OS Style: {0}'.format(self.params['use_native_style']))
         print('OBJ Groups: {0}'.format(self.params['obj_groups']))
         print('OBJ Point Groups: {0}'.format(self.params['obj_ptgroups']))
@@ -558,12 +568,22 @@ class OptionsPopup(QtWidgets.QDialog):
         self.always_ask_cb = QtWidgets.QCheckBox('Ask path before every export')
         self.triangulate_cb = QtWidgets.QCheckBox('Triangulate mesh')
         self.move_to_origin_cb = QtWidgets.QCheckBox('Move to origin')
+        self.combine_cb = QtWidgets.QCheckBox('Combine Meshes')
+        self.combine_cb.setToolTip('Should a selection of multiple meshes be combined to a single? Disables Batch export')
 
         self.tool_options_gb = QtWidgets.QGroupBox('Tool Options')
         self.dialog_style_native_rb = QtWidgets.QRadioButton('Native OS File Browser')
         self.dialog_style_maya_rb = QtWidgets.QRadioButton('Maya Style File Browser', checked=True)
 
+        self.obj_options_gb = QtWidgets.QGroupBox('OBJ Export Specific Options')
+        self.obj_groups_cb = QtWidgets.QCheckBox('Groups', checked=True)
+        self.obj_ptgroups_cb = QtWidgets.QCheckBox('Point groups', checked=True)
+        self.obj_materials_cb = QtWidgets.QCheckBox('Materials', checked=True)
+        self.obj_smoothing_cb = QtWidgets.QCheckBox('Smoothing', checked=True)
+        self.obj_normals_cb = QtWidgets.QCheckBox('Normals', checked=True)
+
         self.path_options_gb = QtWidgets.QGroupBox('File Export Paths')
+        self.file_path_lbl = QtWidgets.QLabel('Single OBJ export')
         self.file_path_le = QtWidgets.QLineEdit()
         self.file_path_le.setMinimumWidth(250)
         #self.file_path_le.setReadOnly(True)
@@ -573,13 +593,7 @@ class OptionsPopup(QtWidgets.QDialog):
         self.file_path_btn.setIcon(QtGui.QIcon(':folder-closed.png'))
         self.file_path_btn.setToolTip('Browse')
 
-        self.obj_options_gb = QtWidgets.QGroupBox('OBJ Export Specific Options')
-        self.obj_groups_cb = QtWidgets.QCheckBox('Groups', checked=True)
-        self.obj_ptgroups_cb = QtWidgets.QCheckBox('Point groups', checked=True)
-        self.obj_materials_cb = QtWidgets.QCheckBox('Materials', checked=True)
-        self.obj_smoothing_cb = QtWidgets.QCheckBox('Smoothing', checked=True)
-        self.obj_normals_cb = QtWidgets.QCheckBox('Normals', checked=True)
-
+        self.batch_path_lbl = QtWidgets.QLabel('Batch OBJ export')
         self.batch_path_le = QtWidgets.QLineEdit()
         self.batch_path_le.setMinimumWidth(250)
         #self.batch_path_le.setReadOnly(True)
@@ -603,6 +617,7 @@ class OptionsPopup(QtWidgets.QDialog):
         export_options_layout.addWidget(self.always_ask_cb)
         export_options_layout.addWidget(self.triangulate_cb)
         export_options_layout.addWidget(self.move_to_origin_cb)
+        export_options_layout.addWidget(self.combine_cb)
         export_options_layout.addStretch()
         self.export_options_gb.setLayout(export_options_layout)
 
@@ -623,10 +638,10 @@ class OptionsPopup(QtWidgets.QDialog):
         self.obj_options_gb.setLayout(obj_options_layout)
 
         path_options_layout = QtWidgets.QGridLayout()
-        path_options_layout.addWidget(QtWidgets.QLabel('Single OBJ export'), 0, 0)
+        path_options_layout.addWidget(self.file_path_lbl, 0, 0)
         path_options_layout.addWidget(self.file_path_le, 0, 1)
         path_options_layout.addWidget(self.file_path_btn, 0, 2)
-        path_options_layout.addWidget(QtWidgets.QLabel('Batch OBJ export'), 1, 0)
+        path_options_layout.addWidget(self.batch_path_lbl, 1, 0)
         path_options_layout.addWidget(self.batch_path_le, 1, 1)
         path_options_layout.addWidget(self.batch_path_btn, 1, 2)
         self.path_options_gb.setLayout(path_options_layout)
@@ -661,6 +676,7 @@ class OptionsPopup(QtWidgets.QDialog):
         self.file_path_btn.clicked.connect(self.set_file_path)
         self.batch_path_btn.clicked.connect(self.set_batch_path)
         self.always_ask_cb.stateChanged.connect(self.toggle_path_options)
+        self.combine_cb.stateChanged.connect(self.combine_updated)
 
     def set_file_path(self):
         """ Called when the set single file path option is clicked """
@@ -694,6 +710,7 @@ class OptionsPopup(QtWidgets.QDialog):
         self.always_ask_cb.setChecked(default_params['always_ask'])
         self.triangulate_cb.setChecked(default_params['triangulate_mesh'])
         self.move_to_origin_cb.setChecked(default_params['move_to_origin'])
+        self.combine_cb.setChecked(default_params['combine'])
         self.dialog_style_native_rb.setChecked(default_params['use_native_style'])
         self.obj_groups_cb.setChecked(default_params['obj_groups'])
         self.obj_ptgroups_cb.setChecked(default_params['obj_ptgroups'])
@@ -712,6 +729,7 @@ class OptionsPopup(QtWidgets.QDialog):
             'always_ask' : self.always_ask_cb.isChecked(),
             'triangulate_mesh' : self.triangulate_cb.isChecked(),
             'move_to_origin' : self.move_to_origin_cb.isChecked(),
+            'combine' : self.combine_cb.isChecked(),
             'use_native_style' : self.dialog_style_native_rb.isChecked(),
             'obj_groups' : self.obj_groups_cb.isChecked(),
             'obj_ptgroups' : self.obj_ptgroups_cb.isChecked(),
@@ -729,6 +747,14 @@ class OptionsPopup(QtWidgets.QDialog):
     def toggle_path_options(self):
         """ Disable the file path line edits if the "ask before every export" checkbox is ticked """
         self.path_options_gb.setEnabled(not self.always_ask_cb.isChecked())
+
+    def combine_updated(self):
+        """ Disables the batch path line edit if Combine checkbox is ticked """
+        new_state = not self.combine_cb.isChecked()
+        self.batch_path_lbl.setEnabled(new_state)
+        self.batch_path_le.setEnabled(new_state)
+        self.batch_path_btn.setEnabled(new_state)
+        
 
 
 # Main Method (used for testing)
