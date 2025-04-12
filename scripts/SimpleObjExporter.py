@@ -820,20 +820,16 @@ class OptionsPopup(QtWidgets.QDialog):
 
     def set_file_path(self):
         """ Shows Maya file dialog, updates line edits if valid """
-        if self.dialog_style_native_rb.isChecked():
-            file_path = show_export_file_dialog(0, 1, os.path.dirname(self.file_path_le.text()))
-        else:
-            file_path = show_export_file_dialog(0, 2, os.path.dirname(self.file_path_le.text()))
+        file_path = show_export_file_dialog(0, self.dialog_style_native_rb.isChecked(), 
+                                            os.path.dirname(self.file_path_le.text()))
 
         if file_path:
             self.file_path_le.setText(file_path[0])
 
     def set_batch_path(self):
         """ Shows Maya file dialog, updates line edits if valid """
-        if self.dialog_style_native_rb.isChecked():
-            batch_path = show_export_file_dialog(3, 1, self.batch_path_le.text())
-        else:
-            batch_path = show_export_file_dialog(3, 2, self.batch_path_le.text())
+        batch_path = show_export_file_dialog(3, self.dialog_style_native_rb.isChecked(), 
+                                             self.batch_path_le.text())
 
         if batch_path:
             self.batch_path_le.setText(batch_path[0])
