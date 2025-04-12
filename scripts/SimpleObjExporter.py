@@ -34,15 +34,18 @@ def maya_main_window():
     return wrapInstance(int(main_window_ptr), QtWidgets.QWidget)
 
 
-def clean_filename(filename):
-    """
+def clean_filename(node):
+    """ 
     Does a basic strip and replace so a Maya node can easily become a filename.
     Maya does a decent job for us already by only allowing alphanum and ':' and "_"
-    :param str filename: The string to be cleaned
-    :return str: The cleaned string
+
+    Args:
+        filename (str): The string to be cleaned
+    Returns:
+        filename (str): The cleaned string suitable for a filename 
     """
     # Check for leading or trailing symbols
-    filename = filename.strip(' :|')
+    filename = node.strip(' :|')
 
     # Check for symbols in the string
     filename = filename.replace(':', '_')
@@ -50,12 +53,16 @@ def clean_filename(filename):
     return filename
 
 def validate_dir_path(path):
-    """
+    """ 
     Perform a relatively simple check of the given user path.
     Puts a little more trust to the user to not type garbage into the file path line edits in the UI.
-    Check if the directory exists, if not create the directory. If that fails, return False.
-    :param str path: The path to test against, and potentially create.
-    :return:
+    Check if the directory exists - and if not - creates the directory.
+    If the directory creation fails, returns False.
+
+    Args:
+        path (str): The path to test against, and potentially create.
+    Returns:
+        bool: True if path exists or could be created, False if path could not be created
     """
     if path is None:
         return False
@@ -79,12 +86,13 @@ def set_attr(node, short_name, long_name, attr_type, value):
     """
     Static helper method for setting a Maya attribute. Checks if attribute exists, adds it if not,
     and goes on to set the value.
-    :param node: The Maya node to add the attribute to
-    :param short_name: Attribute's Maya short name
-    :param long_name: Attribute's Maya Long name
-    :param attr_type: The attribute's type (string, bool, etc)
-    :param value: The value to set the attribute to
-    :return:
+
+    Args:
+        node (str): The Maya node to add the attribute to
+        short_name (str): Attribute's Maya short name
+        long_name (str): Attribute's Maya Long name
+        attr_type (str): The attribute's type (string, bool, etc)
+        value (str or bool): The value to set the attribute to
     """
     try:
         if cmds.listAttr(node, userDefined=True, visible=True) is None or \
@@ -105,36 +113,46 @@ def set_attr(node, short_name, long_name, attr_type, value):
         cmds.setAttr('{0}.{1}'.format(node, short_name), value)
 
 
-def get_attr(mesh, short_name):
+def get_attr(node, short_name):
     """
     Static helper method for attempting to get an attributes value from a Maya node
-    :param mesh: The Maya node that contains attribute
-    :param short_name: The attribute's short name
-    :return: The attribute's value if exists, None if does not exist
+
+    Args:
+        node (str): The Maya node that contains attribute
+        short_name (str): The attribute's short name
+
+    Returns:
+        The attribute's value if exists, None if does not exist
     """
     try:
-        return cmds.getAttr('{0}.{1}'.format(mesh, short_name))
+        return cmds.getAttr('{0}.{1}'.format(node, short_name))
     except ValueError as e:
         return None
     
-def delete_attr(mesh, short_name):
+def delete_attr(node, short_name):
     """
     Static helper method for attempting to delete a attribute on a Maya node
-    :param mesh: The Maya node that contains attribute
-    :param short_name: The attribute's short name
+    
+    Args:
+        node (str): The Maya node that contains attribute
+        short_name (str): The attribute's short name
     """
     try:
-        cmds.deleteAttr('{0} at={1}'.format(mesh, short_name))
+        cmds.deleteAttr('{0} at={1}'.format(node, short_name))
     except RuntimeError as e:
         return
 
 def show_export_file_dialog(dialog_mode, native_style, starting_dir = None):
     """
     Static helper function to display the Maya file dialog based on users styler selection
-    :param dialog_mode: 0 Any file, existing or not, 3 Name of a directory
-    :param native_style: if to use Native OS style or Maya style
-    :param starting_dir: Path to directory to start file dialog in, defaults to Workspace
-    :return: The string list output by maya's cmd.fileDialog2 command
+
+    Args:
+        dialog_mode (int): 0 Any file, existing or not, 3 Name of a directory
+        native_style (bool): if to use Native OS style or Maya style
+        starting_dir (str): Optional path to directory to start file dialog in, defaults to Workspace
+    
+    Returns:
+        The output of maya's cmd.fileDialog2 command, stringArray or None
     """
     try:
         if not os.path.exists(starting_dir):
@@ -155,7 +173,16 @@ def show_export_file_dialog(dialog_mode, native_style, starting_dir = None):
                             okCaption='Select', caption='Set batch OBJ export path...')
 
 def show_import_file_dialog(native_style, starting_dir = None):
-    """ Static helper function to display the Maya file dialog, for setting OBJ import """
+    """ 
+    Static helper function to display the Maya file dialog, for setting OBJ import 
+    
+    Args:
+        native_style (bool): if to use Native OS style or Maya style
+        starting_dir (str): Optional path to directory to start file dialog in, defaults to Workspace
+    
+    Returns:
+        The output of maya's cmd.fileDialog2 command, stringArray or None
+    """
     try:
         if not os.path.exists(starting_dir):
             starting_dir = cmds.workspace(query=True, directory=True)
@@ -320,6 +347,9 @@ class SimpleObjExporter:
         Depending on length of selection array, call appropriate export method.
         By the time this function is reached, we are confident we have a valid selection and work
         under that assumption.
+
+        Args:
+            selection (array): Array of node names given from Maya's cmds.ls command, arbitrary length
         """
         # ensure scene params loaded
         self.load_attributes(self.params_node)
@@ -350,7 +380,10 @@ class SimpleObjExporter:
         
     def export_single(self, mesh):
         """
-        Checks file export path for the single mesh, and calls final export mesh method 
+        Checks file export path for the single mesh, and calls final export mesh method
+
+        Args:
+            mesh (str): Single mesh node name to attempt export
         """
         # Are we asking path each time?
         if self.params['always_ask']:
@@ -367,6 +400,9 @@ class SimpleObjExporter:
     def export_batch(self, meshes):
         """
         Checks file export path for the batch, and loops over given meshes calling export mesh method
+
+        Args:
+            meshes (array): String array of mesh names to export
         """
         successful = 0
         failed = 0
@@ -408,6 +444,9 @@ class SimpleObjExporter:
     def export_mesh(self, mesh):
         """
         Duplicates, processes, and exports the specified mesh
+
+        Args:
+            mesh (str): Single mesh node name to attempt to export
         """
         file_path = self.params['export_path']
         result = False
@@ -435,8 +474,9 @@ class SimpleObjExporter:
     def preprocess_mesh(self, mesh):
         """
         Runs Maya commands processing the given mesh based on the options selected
-        :param mesh: Name of node to be processed
-        :type mesh: str
+
+        Args:
+            mesh (str): Single mesh node name to be processed
         """
         # Triangulation
         if self.params['triangulate_mesh']:
@@ -454,6 +494,12 @@ class SimpleObjExporter:
     def combine_meshes(self, meshes):
         """
         Duplicates working copies, polyUnite, and delete history on the given array of meshes
+
+        Args:
+            meshes (array): Array of mesh node names to combine into new mesh
+
+        Returns:
+            combined (str): Mesh node name of newly combined mesh
         """
         duplicated = cmds.duplicate(meshes)
         combined = cmds.polyUnite(duplicated, centerPivot = True)
@@ -544,7 +590,10 @@ class SimpleObjExporter:
         self.save_attributes(self.params_node)
 
     def import_pressed(self):
-        """ The import button has been pressed """
+        """ 
+        Checks current class import path variable, shows path file dialog if invalid, then loops
+        over the array of paths and imports to scene via Maya cmds.file command
+        """
 
         # do we already have path set?
         if len(self.import_paths) == 0 :
@@ -562,7 +611,13 @@ class SimpleObjExporter:
                 om.MGlobal.displayError('Unable to import OBJ file "{0}", due to {1}'.format(import_path, e))
 
     def show_import_options(self):
-        """ Popup the import OBJ file dialog """
+        """
+        Displays the Maya file dialog with options set for importing. Saves path(s) to class import path 
+        variable if valid.
+
+        Returns:
+            bool: True if valid path(s) selected, False if invalid OR dialog cancelled
+        """
 
         starting_dir = cmds.workspace(query=True, directory=True)
         if len(self.import_paths) > 0:
@@ -581,8 +636,10 @@ class SimpleObjExporter:
     def load_attributes(self, node):
         """
         Attempts to load the specified attributes from the given Maya node, and if they exist, 
-        sets our class dict to those attributes, importantly leaving value unchanged if not
-        :param node: The Maya node to attempt to read attributes from
+        sets our class dict to those attributes, leaving value unchanged if not
+
+        Args:
+            node (str): The Maya node to attempt to read attributes from
         """
         for param in self.param_attr_map.keys():
             short_name = self.param_attr_map[param]['sn']
@@ -592,7 +649,9 @@ class SimpleObjExporter:
     def save_attributes(self, node):
         """
         Adds and sets all the required attributes to the given Maya node, using the static set_attr method
-        :param node: The Maya node to add and set the attributes to
+
+        Args:
+            node (str): The Maya node to add and set the attributes to
         """
 
         for param in self.param_attr_map.keys():
@@ -606,7 +665,9 @@ class SimpleObjExporter:
         """
         Deletes all the attributes added by this tool from the given Maya node. Once deleted, the node
         is no longer considered to have overrides and will use the scene params to export.
-        :param node: The Maya node on which to delete attributes
+        
+        Args:
+            node (str): The Maya node on which to delete attributes
         """
         for param in self.param_attr_map.keys():
             delete_attr(node, self.param_attr_map[param]['sn'])
@@ -758,7 +819,7 @@ class OptionsPopup(QtWidgets.QDialog):
         self.combine_cb.stateChanged.connect(self.combine_updated)
 
     def set_file_path(self):
-        """ Called when the set single file path option is clicked """
+        """ Shows Maya file dialog, updates line edits if valid """
         if self.dialog_style_native_rb.isChecked():
             file_path = show_export_file_dialog(0, 1, os.path.dirname(self.file_path_le.text()))
         else:
@@ -768,7 +829,7 @@ class OptionsPopup(QtWidgets.QDialog):
             self.file_path_le.setText(file_path[0])
 
     def set_batch_path(self):
-        """ Called when the set batch file path button is clicked """
+        """ Shows Maya file dialog, updates line edits if valid """
         if self.dialog_style_native_rb.isChecked():
             batch_path = show_export_file_dialog(3, 1, self.batch_path_le.text())
         else:
@@ -778,7 +839,7 @@ class OptionsPopup(QtWidgets.QDialog):
             self.batch_path_le.setText(batch_path[0])
 
     def load_defaults(self):
-        """ Called when the Load Defaults button is clicked. """
+        """ Reads JSON file from user prefs, updates UI values """
         #print('SimpleObjExporter: Reading defaults from json...')
 
         with open(DEFAULTS_JSON, 'r') as fr:
@@ -801,7 +862,7 @@ class OptionsPopup(QtWidgets.QDialog):
 
 
     def save_defaults(self):
-        """ Called when the Save Defaults button is clicked """
+        """ Using UI values, saves JSON to user prefs """
         json_params = {
             'export_path' : self.file_path_le.text(),
             'batch_export_path' : self.batch_path_le.text(),
@@ -833,7 +894,6 @@ class OptionsPopup(QtWidgets.QDialog):
         self.batch_path_lbl.setEnabled(new_state)
         self.batch_path_le.setEnabled(new_state)
         self.batch_path_btn.setEnabled(new_state)
-        
 
 
 # Main Method (used for testing)
