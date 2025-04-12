@@ -6,6 +6,8 @@ global proc shelf_ObjExportImport () {
 
     shelfButton
         -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
         -enable 1
         -width 35
         -height 34
@@ -27,18 +29,20 @@ global proc shelf_ObjExportImport () {
         -overlayLabelColor 0.8 0.8 0.8 
         -overlayLabelBackColor 0 0 0 0.5 
         -image "SimpleObjExporter_Shelf_Icon.png" 
-        -image1 "SimpleObjExporter_Shelf_Icon.png"
+        -image1 "SimpleObjExporter_Shelf_Icon.png" 
         -style "iconOnly" 
-        -marginWidth 1
+        -marginWidth 0
         -marginHeight 1
-        -command "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter\nsimple_obj_exporter.shelf_button_clicked()" 
+        -command "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter()\nsimple_obj_exporter.export_shelf_button()" 
         -sourceType "python" 
-        -doubleClickCommand "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter\nsimple_obj_exporter.shelf_button_alt_clicked()" 
+        -doubleClickCommand "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter()\nsimple_obj_exporter.export_shelf_button_alt()"
         -commandRepeatable 1
         -flat 1
     ;
     shelfButton
         -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
         -enable 1
         -width 35
         -height 34
@@ -62,11 +66,11 @@ global proc shelf_ObjExportImport () {
         -image "SimpleObjImporter_Shelf_Icon.png" 
         -image1 "SimpleObjImporter_Shelf_Icon.png" 
         -style "iconOnly" 
-        -marginWidth 1
+        -marginWidth 0
         -marginHeight 1
-        -command "import SimpleObjImporter as soi\n\nsimple_obj_importer = soi.SimpleObjImporter\nsimple_obj_importer.shelf_button_clicked()" 
+        -command "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter()\nsimple_obj_exporter.import_shelf_button()"
         -sourceType "python" 
-        -doubleClickCommand "import SimpleObjImporter as soi\n\nsimple_obj_importer = soi.SimpleObjImporter\nsimple_obj_importer.shelf_button_alt_clicked()" 
+        -doubleClickCommand "import SimpleObjExporter as soe\n\nsimple_obj_exporter = soe.SimpleObjExporter()\nsimple_obj_exporter.import_shelf_button_alt()"
         -commandRepeatable 1
         -flat 1
     ;

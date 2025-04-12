@@ -3,9 +3,9 @@ MIT License
 Copyright (c) 2020-2025 James Furler
 
 -------------------------------------------------------------------
-A Simple OBJ Batch Exporter for Maya
+A Simple OBJ Exporter and Importer for Maya
 
-Tested with Maya 2024
+Tested with Maya 2024, 2025
 -------------------------------------------------------------------
 """
 import os
@@ -98,8 +98,8 @@ def set_attr(node, short_name, long_name, attr_type, value):
         pass
 
     # set the attribute
-    if attr_type == 'string' and value:
-        cmds.setAttr('{0}.{1}'.format(node, short_name), value, type='string')
+    if attr_type == 'string':
+        cmds.setAttr('{0}.{1}'.format(node, short_name), value, type="string")
 
     elif attr_type == 'bool':
         cmds.setAttr('{0}.{1}'.format(node, short_name), value)
@@ -128,16 +128,23 @@ def delete_attr(mesh, short_name):
     except RuntimeError as e:
         return
 
-def show_file_dialog(dialog_mode, dialog_style, starting_dir = None):
+def show_export_file_dialog(dialog_mode, native_style, starting_dir = None):
     """
     Static helper function to display the Maya file dialog based on users styler selection
-    :param dialog_style: 1 Native OS style, 2 Maya style
     :param dialog_mode: 0 Any file, existing or not, 3 Name of a directory
+    :param native_style: if to use Native OS style or Maya style
     :param starting_dir: Path to directory to start file dialog in, defaults to Workspace
     :return: The string list output by maya's cmd.fileDialog2 command
     """
-    if not validate_dir_path(starting_dir):
+    try:
+        if not os.path.exists(starting_dir):
+            starting_dir = cmds.workspace(query=True, directory=True)
+    except TypeError:
         starting_dir = cmds.workspace(query=True, directory=True)
+
+    dialog_style = 2
+    if native_style:
+        dialog_style = 1
 
     if dialog_mode == 0:
         obj_filter = 'OBJ Files (*.obj);;All Files (*.*)'
@@ -147,30 +154,64 @@ def show_file_dialog(dialog_mode, dialog_style, starting_dir = None):
     return cmds.fileDialog2(fileMode=3, dialogStyle=dialog_style, startingDirectory=starting_dir,
                             okCaption='Select', caption='Set batch OBJ export path...')
 
+def show_import_file_dialog(native_style, starting_dir = None):
+    """ Static helper function to display the Maya file dialog, for setting OBJ import """
+    try:
+        if not os.path.exists(starting_dir):
+            starting_dir = cmds.workspace(query=True, directory=True)
+    except TypeError:
+        starting_dir = cmds.workspace(query=True, directory=True)
+
+    dialog_style = 2
+    if native_style:
+        dialog_style = 1
+
+    obj_filter = 'OBJ Files (*.obj);;All Files (*.*)'
+
+    return cmds.fileDialog2(fileFilter=obj_filter, fileMode=4, dialogStyle=dialog_style, 
+                            startingDirectory=starting_dir, caption='Set OBJ file import path...')
+
 
 class SimpleObjExporter:
     # Use a class method to create only one instance of this class for persistence
     class_instance = None
 
     @classmethod
-    def shelf_button_clicked(cls):
+    def export_shelf_button(cls):
         if not cls.class_instance:
             cls.class_instance = SimpleObjExporter()
 
         cls.class_instance.export_pressed()
 
     @classmethod
-    def shelf_button_alt_clicked(cls):
+    def export_shelf_button_alt(cls):
         if not cls.class_instance:
             cls.class_instance = SimpleObjExporter()
 
-        cls.class_instance.show_options()
+        cls.class_instance.show_export_options()
+    
+    @classmethod
+    def import_shelf_button(cls):
+        if not cls.class_instance:
+            cls.class_instance = SimpleObjExporter()
+
+        cls.class_instance.import_pressed()
+
+    @classmethod
+    def import_shelf_button_alt(cls):
+        if not cls.class_instance:
+            cls.class_instance = SimpleObjExporter()
+
+        # show options and if successful, do import
+        if cls.class_instance.show_import_options():
+            cls.class_instance.import_pressed()
+
 
     def __init__(self):
         """ Constructor Method """
         # create and connect a persistent options window
         self.options_popup = OptionsPopup()
-        self.options_popup.accepted.connect(self.options_accepted)
+        self.options_popup.accepted.connect(self.export_options_accepted)
 
         # non DAG node to store our settings on
         self.params_node = 'simpleObjExporterParams'
@@ -216,6 +257,10 @@ class SimpleObjExporter:
             'obj_normals' : {'sn':'soen','ln':'soe_obj_normals', 'type':'bool'}
         }
 
+        # don't include import path in the param dict, is an array of strings and storing that on
+        # an attribute dynamically is actually quite tricky it turns out..
+        self.import_paths = []
+
 
     def init_export_params(self):
         """
@@ -254,7 +299,7 @@ class SimpleObjExporter:
 
         if len(selection) <= 0:
             # if export clicked with nothing selected, just show options instead
-            self.show_options()
+            self.show_export_options()
             return
 
         else:
@@ -309,13 +354,8 @@ class SimpleObjExporter:
         """
         # Are we asking path each time?
         if self.params['always_ask']:
-            # put dialog_style into mayas expected args
-            if self.params['use_native_style']:
-                dialog_style = 1
-            else:
-                dialog_style = 2
-
-            self.params['export_path'] = show_file_dialog(0, dialog_style)[0]
+            self.params['export_path'] = show_export_file_dialog(0, self.params['use_native_style'], 
+                                                                 os.path.dirname(self.params['export_path']))[0]
 
         # now we have loaded from scene and checked overrides,
         # lets ensure that current export path is valid
@@ -333,11 +373,8 @@ class SimpleObjExporter:
     
         # Are we asking path each time?
         if self.params['always_ask']:
-            if self.params['use_native_style']:
-                dialog_style = 1
-            else:
-                dialog_style = 2
-            self.params['batch_export_path'] = show_file_dialog(3, dialog_style)[0]
+            self.params['batch_export_path'] = show_export_file_dialog(3, self.params['use_native_style'], 
+                                                                       self.params['batch_export_path'])[0]
 
         # bail out if not valid directory
         if not validate_dir_path(self.params['batch_export_path']):
@@ -456,7 +493,7 @@ class SimpleObjExporter:
         return 'groups={0};ptgroups={1};materials={2};smoothing={3};normals={4}'.format(
             groups, ptgroups, materials, smoothing, normals)
 
-    def show_options(self):
+    def show_export_options(self):
         """
         Set the fields of the option dialog instance based on the current selection, and shows option dialog.
         """
@@ -483,7 +520,7 @@ class SimpleObjExporter:
 
         self.options_popup.show()
 
-    def options_accepted(self):
+    def export_options_accepted(self):
         """
         Saves the values from the options UI to our class dict and scene, if the user clicks accept.
         If the user rejects UI, we don't save these so that next time the UI is launched it still
@@ -505,6 +542,41 @@ class SimpleObjExporter:
 
         # save to scene
         self.save_attributes(self.params_node)
+
+    def import_pressed(self):
+        """ The import button has been pressed """
+
+        # do we already have path set?
+        if len(self.import_paths) == 0 :
+            if not self.show_import_options():
+                om.MGlobal.displayWarning('No valid paths for import set!')
+                return
+        
+        # do actual import
+        for i in range(0, len(self.import_paths)):
+            import_path = self.import_paths[i]
+            try:
+                cmds.file(import_path, i=True, type='OBJ', renameAll=True, mergeNamespacesOnClash=True,
+                          namespace=':', options='mo=1', importTimeRange='keep')
+            except RuntimeError as e:
+                om.MGlobal.displayError('Unable to import OBJ file "{0}", due to {1}'.format(import_path, e))
+
+    def show_import_options(self):
+        """ Popup the import OBJ file dialog """
+
+        starting_dir = cmds.workspace(query=True, directory=True)
+        if len(self.import_paths) > 0:
+            starting_dir = os.path.dirname(self.import_paths[0])
+
+        path = show_import_file_dialog(self.params['use_native_style'], starting_dir)
+
+        if path is not None:
+            self.import_paths = path
+            return True
+        
+        # else
+        return False
+
     
     def load_attributes(self, node):
         """
@@ -688,9 +760,9 @@ class OptionsPopup(QtWidgets.QDialog):
     def set_file_path(self):
         """ Called when the set single file path option is clicked """
         if self.dialog_style_native_rb.isChecked():
-            file_path = show_file_dialog(0, 1)
+            file_path = show_export_file_dialog(0, 1, os.path.dirname(self.file_path_le.text()))
         else:
-            file_path = show_file_dialog(0, 2)
+            file_path = show_export_file_dialog(0, 2, os.path.dirname(self.file_path_le.text()))
 
         if file_path:
             self.file_path_le.setText(file_path[0])
@@ -698,9 +770,9 @@ class OptionsPopup(QtWidgets.QDialog):
     def set_batch_path(self):
         """ Called when the set batch file path button is clicked """
         if self.dialog_style_native_rb.isChecked():
-            batch_path = show_file_dialog(3, 1)
+            batch_path = show_export_file_dialog(3, 1, self.batch_path_le.text())
         else:
-            batch_path = show_file_dialog(3, 2)
+            batch_path = show_export_file_dialog(3, 2, self.batch_path_le.text())
 
         if batch_path:
             self.batch_path_le.setText(batch_path[0])
