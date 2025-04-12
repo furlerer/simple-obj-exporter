@@ -605,8 +605,12 @@ class SimpleObjExporter:
         for i in range(0, len(self.import_paths)):
             import_path = self.import_paths[i]
             try:
-                cmds.file(import_path, i=True, type='OBJ', renameAll=True, mergeNamespacesOnClash=True,
-                          namespace=':', options='mo=1', importTimeRange='keep')
+                new_name = os.path.split(import_path)[-1]
+                new_name = os.path.splitext(new_name)[0]
+                imported = cmds.file(import_path, i=True, type='OBJ', renameAll=True, mergeNamespacesOnClash=True,
+                          namespace=':', options='mo=1', returnNewNodes = True, importTimeRange='keep')
+                cmds.rename(imported[0], new_name)
+
             except RuntimeError as e:
                 om.MGlobal.displayError('Unable to import OBJ file "{0}", due to {1}'.format(import_path, e))
 
