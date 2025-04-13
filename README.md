@@ -9,6 +9,8 @@ Tested on Windows 11 with Maya:
 - 2024
 
 ## Installation
+### A [video walkthrough](https://youtu.be/TA5OI44xC3w) is also available if you prefer!
+
 1. Download the latest or most appropriate for your Maya version **Source code zip** from [Releases](https://github.com/furlerer/simple-obj-exporter/releases)
 
 2. Ensure Maya is **closed**.
